@@ -3,7 +3,7 @@ import request from '@/utils/request'
 // 获取角色列表
 export function getRoleList(params) {
   return request({
-    url: '/api/admin/roles',
+    url: '/admin/roles',
     method: 'get',
     params,
   })
@@ -12,7 +12,7 @@ export function getRoleList(params) {
 // 获取角色详情
 export function getRoleDetail(id) {
   return request({
-    url: `/api/admin/roles/${id}`,
+    url: `/admin/roles/${id}`,
     method: 'get',
   })
 }
@@ -20,7 +20,7 @@ export function getRoleDetail(id) {
 // 创建角色
 export function createRole(data) {
   return request({
-    url: '/api/admin/roles',
+    url: '/admin/roles',
     method: 'post',
     data,
   })
@@ -29,7 +29,7 @@ export function createRole(data) {
 // 更新角色
 export function updateRole(id, data) {
   return request({
-    url: `/api/admin/roles/${id}`,
+    url: `/admin/roles/${id}`,
     method: 'put',
     data,
   })
@@ -38,7 +38,7 @@ export function updateRole(id, data) {
 // 删除角色
 export function deleteRole(id) {
   return request({
-    url: `/api/admin/roles/${id}`,
+    url: `/admin/roles/${id}`,
     method: 'delete',
   })
 }
@@ -46,7 +46,7 @@ export function deleteRole(id) {
 // 获取角色权限
 export function getRolePermissions(id) {
   return request({
-    url: `/api/admin/roles/${id}/permissions`,
+    url: `/admin/roles/${id}/permissions`,
     method: 'get',
   })
 }
@@ -54,7 +54,7 @@ export function getRolePermissions(id) {
 // 分配权限
 export function assignPermissions(id, data) {
   return request({
-    url: `/api/admin/roles/${id}/permissions`,
+    url: `/admin/roles/${id}/permissions`,
     method: 'post',
     data,
   })

@@ -3,7 +3,7 @@ import request from '@/utils/request'
 // 获取完整菜单树（管理员视图）
 export function getMenuTree() {
   return request({
-    url: '/api/menus/admin/tree',
+    url: '/menus/admin/tree',
     method: 'get',
   })
 }
@@ -11,7 +11,7 @@ export function getMenuTree() {
 // 创建菜单
 export function createMenu(data) {
   return request({
-    url: '/api/menus/admin',
+    url: '/menus/admin',
     method: 'post',
     data,
   })
@@ -20,7 +20,7 @@ export function createMenu(data) {
 // 更新菜单
 export function updateMenu(id, data) {
   return request({
-    url: `/api/menus/admin/${id}`,
+    url: `/menus/admin/${id}`,
     method: 'put',
     data,
   })
@@ -29,7 +29,7 @@ export function updateMenu(id, data) {
 // 删除菜单
 export function deleteMenu(id) {
   return request({
-    url: `/api/menus/admin/${id}`,
+    url: `/menus/admin/${id}`,
     method: 'delete',
   })
 }

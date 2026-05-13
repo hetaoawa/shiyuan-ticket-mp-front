@@ -3,7 +3,7 @@ import request from '@/utils/request'
 // 获取用户列表
 export function getUserList(params) {
   return request({
-    url: '/api/admin/users',
+    url: '/admin/users',
     method: 'get',
     params,
   })
@@ -12,7 +12,7 @@ export function getUserList(params) {
 // 获取用户详情
 export function getUserDetail(id) {
   return request({
-    url: `/api/admin/users/${id}`,
+    url: `/admin/users/${id}`,
     method: 'get',
   })
 }
@@ -20,7 +20,7 @@ export function getUserDetail(id) {
 // 创建用户
 export function createUser(data) {
   return request({
-    url: '/api/admin/users',
+    url: '/admin/users',
     method: 'post',
     data,
   })
@@ -29,7 +29,7 @@ export function createUser(data) {
 // 更新用户
 export function updateUser(id, data) {
   return request({
-    url: `/api/admin/users/${id}`,
+    url: `/admin/users/${id}`,
     method: 'put',
     data,
   })
@@ -38,7 +38,7 @@ export function updateUser(id, data) {
 // 删除用户
 export function deleteUser(id) {
   return request({
-    url: `/api/admin/users/${id}`,
+    url: `/admin/users/${id}`,
     method: 'delete',
   })
 }
@@ -46,7 +46,7 @@ export function deleteUser(id) {
 // 重置密码
 export function resetPassword(id, data) {
   return request({
-    url: `/api/admin/users/${id}/reset-password`,
+    url: `/admin/users/${id}/reset-password`,
     method: 'post',
     data,
   })
@@ -55,7 +55,7 @@ export function resetPassword(id, data) {
 // 获取用户角色
 export function getUserRoles(id) {
   return request({
-    url: `/api/admin/users/${id}/roles`,
+    url: `/admin/users/${id}/roles`,
     method: 'get',
   })
 }
@@ -63,7 +63,7 @@ export function getUserRoles(id) {
 // 分配角色
 export function assignRoles(id, data) {
   return request({
-    url: `/api/admin/users/${id}/roles`,
+    url: `/admin/users/${id}/roles`,
     method: 'post',
     data,
   })

@@ -29,7 +29,7 @@
           </el-menu-item>
 
           <!-- 多级菜单 -->
-          <el-sub-menu v-else :index="menu.path || String(menu.id)">
+          <el-sub-menu v-else :index="String(menu.id)">
             <template #title>
               <el-icon>
                 <component :is="getIconComponent(menu.icon)" />
@@ -130,14 +130,32 @@ const iconMap = {
   'menu': 'Menu',
   'document': 'Document',
   'warning': 'Warning',
-  'monitor': 'Monitor'
+  'monitor': 'Monitor',
+  'team': 'UserFilled',
+  'file-search': 'Search'
 }
 
-// 菜单数据（基于 API）
+// 菜单数据（基于 API，修复重复路径）
 const menuRoutes = computed(() => {
   const menus = userStore.menuTree
   if (!menus || menus.length === 0) return []
-  return menus
+  // 修复后端返回重复路径的 bug（如角色管理路径与用户管理相同）
+  const usedPaths = new Set()
+  return menus.map(parent => {
+    if (!parent.children || parent.children.length === 0) return parent
+    return {
+      ...parent,
+      children: parent.children.map(child => {
+        let path = child.path
+        if (usedPaths.has(path)) {
+          // 路径重复，使用 menuCode 生成唯一路径
+          path = '/' + child.menuCode.replace(/:/g, '/')
+        }
+        usedPaths.add(path)
+        return { ...child, path }
+      })
+    }
+  })
 })
 
 // 获取图标组件
