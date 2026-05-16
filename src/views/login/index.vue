@@ -35,6 +35,12 @@
         </el-form-item>
 
         <el-form-item>
+          <div class="remember-row">
+            <el-checkbox v-model="rememberPassword">记住密码</el-checkbox>
+          </div>
+        </el-form-item>
+
+        <el-form-item>
           <el-button
             type="primary"
             :loading="loading"
@@ -64,7 +70,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
@@ -75,6 +81,7 @@ const userStore = useUserStore()
 
 const loginFormRef = ref(null)
 const loading = ref(false)
+const rememberPassword = ref(false)
 
 // 登录表单
 const loginForm = reactive({
@@ -91,14 +98,41 @@ const loginRules = {
 // 测试账号
 const testAccounts = [
   { username: 'admin', password: 'admin123', role: '系统管理员' },
-  { username: 'warehouse01', password: 'wh123', role: '云仓管理员' },
-  { username: 'cargo01', password: 'cargo123', role: '货主' },
+  { username: 'warehouse01', password: 'admin123', role: '云仓管理员' },
+  { username: 'cargo01', password: 'admin123', role: '货主' },
 ]
 
 // 填充测试账号
 function fillAccount(account) {
   loginForm.username = account.username
   loginForm.password = account.password
+}
+
+// 加载保存的登录信息
+function loadSavedLogin() {
+  const saved = localStorage.getItem('rememberedLogin')
+  if (saved) {
+    try {
+      const { username, password } = JSON.parse(saved)
+      loginForm.username = username || ''
+      loginForm.password = password || ''
+      rememberPassword.value = true
+    } catch {
+      // 解析失败则忽略
+    }
+  }
+}
+
+// 保存登录信息
+function saveLoginInfo() {
+  if (rememberPassword.value) {
+    localStorage.setItem('rememberedLogin', JSON.stringify({
+      username: loginForm.username,
+      password: loginForm.password,
+    }))
+  } else {
+    localStorage.removeItem('rememberedLogin')
+  }
 }
 
 // 登录
@@ -109,6 +143,7 @@ async function handleLogin() {
   loading.value = true
   try {
     await userStore.login(loginForm)
+    saveLoginInfo()
     ElMessage.success('登录成功')
 
     // 跳转到之前的页面或首页
@@ -120,6 +155,10 @@ async function handleLogin() {
     loading.value = false
   }
 }
+
+onMounted(() => {
+  loadSavedLogin()
+})
 </script>
 
 <style scoped>
@@ -154,6 +193,13 @@ async function handleLogin() {
 
 .login-btn {
   width: 100%;
+}
+
+.remember-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .test-accounts {

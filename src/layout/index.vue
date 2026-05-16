@@ -88,7 +88,7 @@
       <el-main class="layout-main">
         <router-view v-slot="{ Component }">
           <transition name="fade" mode="out-in">
-            <component :is="Component" />
+            <component :is="Component" :key="route.fullPath" />
           </transition>
         </router-view>
       </el-main>
@@ -135,10 +135,35 @@ const iconMap = {
   'file-search': 'Search'
 }
 
-// 菜单数据（基于 API，修复重复路径）
+// 静态回退菜单（API 无数据时使用）
+const fallbackMenus = [
+  {
+    id: 'workorder',
+    menuName: '工单管理',
+    icon: 'file-text',
+    children: [
+      { id: 'workorder-list', menuName: '工单列表', path: '/workorder/list', icon: 'list' },
+      { id: 'workorder-create', menuName: '创建工单', path: '/workorder/create', icon: 'plus' }
+    ]
+  },
+  {
+    id: 'system',
+    menuName: '系统管理',
+    icon: 'setting',
+    children: [
+      { id: 'system-user', menuName: '用户管理', path: '/system/user', icon: 'user' },
+      { id: 'system-role', menuName: '角色管理', path: '/system/role', icon: 'team' },
+      { id: 'system-menu', menuName: '菜单管理', path: '/system/menu', icon: 'menu' },
+      { id: 'system-deadletter', menuName: '死信管理', path: '/system/deadletter', icon: 'warning' },
+      { id: 'system-audit', menuName: '审计日志', path: '/system/audit', icon: 'monitor' }
+    ]
+  }
+]
+
+// 菜单数据（基于 API，修复重复路径；API 无数据时回退静态菜单）
 const menuRoutes = computed(() => {
   const menus = userStore.menuTree
-  if (!menus || menus.length === 0) return []
+  if (!menus || menus.length === 0) return fallbackMenus
   // 修复后端返回重复路径的 bug（如角色管理路径与用户管理相同）
   const usedPaths = new Set()
   return menus.map(parent => {

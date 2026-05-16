@@ -9,6 +9,15 @@ export function createWorkOrder(data) {
   })
 }
 
+// AI 智能解析
+export function aiParse(text) {
+  return request({
+    url: '/ai/parse',
+    method: 'post',
+    data: { text },
+  })
+}
+
 // 工单列表（分页）
 export function getWorkOrderList(params) {
   return request({
@@ -50,5 +59,42 @@ export function rejectWorkOrder(id, reason) {
     url: `/workorders/${id}/reject`,
     method: 'post',
     params: { reason },
+  })
+}
+
+// 重新提交工单（REJECTED → PENDING）
+export function resubmitWorkOrder(id, data) {
+  return request({
+    url: `/workorders/${id}/resubmit`,
+    method: 'post',
+    data,
+  })
+}
+
+// 强制驳回工单（任意非CLOSED → REJECTED）
+export function forceRejectWorkOrder(id, reason) {
+  return request({
+    url: `/workorders/${id}/force-reject`,
+    method: 'post',
+    params: { reason },
+  })
+}
+
+// 批量派发工单
+export function batchAssignWorkOrder(data) {
+  return request({
+    url: '/workorders/batch-assign',
+    method: 'post',
+    data,
+  })
+}
+
+// 导出工单 CSV
+export function exportWorkOrders(params) {
+  return request({
+    url: '/workorders/export',
+    method: 'get',
+    params,
+    responseType: 'blob',
   })
 }

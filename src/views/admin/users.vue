@@ -17,9 +17,9 @@
           <el-input v-model="searchForm.username" placeholder="请输入用户名" clearable />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="searchForm.status" placeholder="全部" clearable>
-            <el-option label="正常" value="0" />
-            <el-option label="停用" value="1" />
+          <el-select v-model="searchForm.status" placeholder="全部" clearable class="status-select">
+            <el-option label="启用" :value="1" />
+            <el-option label="禁用" :value="0" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -30,19 +30,27 @@
 
       <!-- 用户列表 -->
       <el-table :data="userList" v-loading="loading" border>
-        <el-table-column prop="userId" label="用户ID" width="100" />
-        <el-table-column prop="username" label="用户名" width="150" />
-        <el-table-column prop="nickname" label="昵称" width="150" />
-        <el-table-column prop="phone" label="手机号" width="150" />
-        <el-table-column prop="email" label="邮箱" width="200" />
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="id" label="用户ID" width="120" show-overflow-tooltip />
+        <el-table-column prop="username" label="用户名" width="120" />
+        <el-table-column prop="nickname" label="昵称" width="120" />
+        <el-table-column prop="phone" label="手机号" width="130">
           <template #default="{ row }">
-            <el-tag :type="row.status === '0' ? 'success' : 'danger'">
-              {{ row.status === '0' ? '正常' : '停用' }}
+            {{ row.phone || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.email || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
+              {{ row.status === 1 ? '启用' : '禁用' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="创建时间" width="180" />
+        <el-table-column prop="createdAt" label="创建时间" width="170" />
         <el-table-column label="操作" fixed="right" width="200">
           <template #default="{ row }">
             <el-button type="primary" link @click="showEditDialog(row)">编辑</el-button>
@@ -55,8 +63,8 @@
       <!-- 分页 -->
       <el-pagination
         v-if="total > 0"
-        :current-page="searchForm.pageNum"
-        :page-size="searchForm.pageSize"
+        v-model:current-page="searchForm.pageNum"
+        v-model:page-size="searchForm.pageSize"
         :total="total"
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="handleSizeChange"
@@ -85,17 +93,17 @@
         </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="userForm.status">
-            <el-radio label="0">正常</el-radio>
-            <el-radio label="1">停用</el-radio>
+            <el-radio :value="1">启用</el-radio>
+            <el-radio :value="0">禁用</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="userForm.roleIds" multiple placeholder="请选择角色">
             <el-option
               v-for="role in roleOptions"
-              :key="role.roleId"
+              :key="role.id"
               :label="role.roleName"
-              :value="role.roleId"
+              :value="role.id"
             />
           </el-select>
         </el-form-item>
@@ -147,13 +155,13 @@ const isEdit = ref(false)
 
 const userFormRef = ref(null)
 const userForm = reactive({
-  userId: null,
+  id: null,
   username: '',
   nickname: '',
   phone: '',
   email: '',
   password: '',
-  status: '0',
+  status: 1,
   roleIds: []
 })
 
@@ -173,7 +181,13 @@ const resetPwdForm = reactive({
 async function loadUserList() {
   loading.value = true
   try {
-    const res = await getUserList(searchForm)
+    const params = {
+      pageNum: searchForm.pageNum,
+      pageSize: searchForm.pageSize,
+    }
+    if (searchForm.username) params.username = searchForm.username
+    if (searchForm.status !== '' && searchForm.status !== null && searchForm.status !== undefined) params.status = searchForm.status
+    const res = await getUserList(params)
     userList.value = res.data?.records || res.data || []
     total.value = res.data?.total || 0
   } catch (error) {
@@ -226,7 +240,7 @@ async function showEditDialog(row) {
   isEdit.value = true
   dialogTitle.value = '编辑用户'
   Object.assign(userForm, {
-    userId: row.userId || row.id,
+    id: row.id,
     username: row.username,
     nickname: row.nickname,
     phone: row.phone,
@@ -237,8 +251,8 @@ async function showEditDialog(row) {
   
   // 获取用户角色
   try {
-    const res = await getUserRoles(row.userId || row.id)
-    userForm.roleIds = (res.data || []).map(r => r.roleId || r.id)
+    const res = await getUserRoles(row.id)
+    userForm.roleIds = res.data || []
   } catch {
     // 忽略错误
   }
@@ -247,20 +261,20 @@ async function showEditDialog(row) {
 }
 
 function showResetPwdDialog(row) {
-  resetPwdForm.userId = row.userId || row.id
+  resetPwdForm.userId = row.id
   resetPwdForm.password = ''
   resetPwdVisible.value = true
 }
 
 function resetForm() {
   Object.assign(userForm, {
-    userId: null,
+    id: null,
     username: '',
     nickname: '',
     phone: '',
     email: '',
     password: '',
-    status: '0',
+    status: 1,
     roleIds: []
   })
 }
@@ -272,15 +286,27 @@ async function handleSubmit() {
   submitLoading.value = true
   try {
     if (isEdit.value) {
-      const { userId, roleIds, ...data } = userForm
-      await updateUser(userId, data)
+      await updateUser(userForm.id, {
+        nickname: userForm.nickname,
+        phone: userForm.phone,
+        email: userForm.email,
+        status: userForm.status,
+      })
       // 分配角色
-      if (roleIds.length > 0) {
-        await assignRoles(userId, roleIds)
+      if (userForm.roleIds.length > 0) {
+        await assignRoles(userForm.id, userForm.roleIds)
       }
       ElMessage.success('更新成功')
     } else {
-      await createUser(userForm)
+      await createUser({
+        username: userForm.username,
+        nickname: userForm.nickname,
+        phone: userForm.phone,
+        email: userForm.email,
+        password: userForm.password,
+        status: userForm.status,
+        roleIds: userForm.roleIds,
+      })
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -312,7 +338,7 @@ async function handleResetPwd() {
 async function handleDelete(row) {
   try {
     await ElMessageBox.confirm('确认删除该用户？', '提示', { type: 'warning' })
-    await deleteUser(row.userId || row.id)
+    await deleteUser(row.id)
     ElMessage.success('删除成功')
     loadUserList()
   } catch {
@@ -335,5 +361,9 @@ onMounted(() => {
 
 .search-form {
   margin-bottom: 16px;
+}
+
+.status-select {
+  width: 140px;
 }
 </style>

@@ -13,18 +13,11 @@
 
       <!-- 角色列表 -->
       <el-table :data="roleList" v-loading="loading" border>
-        <el-table-column prop="roleId" label="角色ID" width="100" />
+        <el-table-column prop="id" label="角色ID" width="100" />
         <el-table-column prop="roleName" label="角色名称" width="150" />
-        <el-table-column prop="roleKey" label="权限字符" width="150" />
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.status === '0' ? 'success' : 'danger'">
-              {{ row.status === '0' ? '正常' : '停用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
+        <el-table-column prop="roleCode" label="权限字符" width="150" />
         <el-table-column prop="remark" label="备注" />
-        <el-table-column prop="createdAt" label="创建时间" width="180" />
+        <el-table-column prop="createdAt" label="创建时间" width="170" />
         <el-table-column label="操作" fixed="right" width="200">
           <template #default="{ row }">
             <el-button type="primary" link @click="showEditDialog(row)">编辑</el-button>
@@ -41,14 +34,8 @@
         <el-form-item label="角色名称" prop="roleName">
           <el-input v-model="roleForm.roleName" placeholder="请输入角色名称" />
         </el-form-item>
-        <el-form-item label="权限字符" prop="roleKey">
-          <el-input v-model="roleForm.roleKey" placeholder="请输入权限字符" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-radio-group v-model="roleForm.status">
-            <el-radio label="0">正常</el-radio>
-            <el-radio label="1">停用</el-radio>
-          </el-radio-group>
+        <el-form-item label="权限字符" prop="roleCode">
+          <el-input v-model="roleForm.roleCode" placeholder="请输入权限字符" />
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="roleForm.remark" type="textarea" :rows="3" placeholder="请输入备注" />
@@ -97,16 +84,15 @@ const isEdit = ref(false)
 
 const roleFormRef = ref(null)
 const roleForm = reactive({
-  roleId: null,
+  id: null,
   roleName: '',
-  roleKey: '',
-  status: '0',
+  roleCode: '',
   remark: ''
 })
 
 const rules = {
   roleName: [{ required: true, message: '请输入角色名称', trigger: 'blur' }],
-  roleKey: [{ required: true, message: '请输入权限字符', trigger: 'blur' }]
+  roleCode: [{ required: true, message: '请输入权限字符', trigger: 'blur' }]
 }
 
 const permDialogVisible = ref(false)
@@ -149,20 +135,19 @@ function showEditDialog(row) {
   isEdit.value = true
   dialogTitle.value = '编辑角色'
   Object.assign(roleForm, {
-    roleId: row.roleId || row.id,
+    id: row.id,
     roleName: row.roleName,
-    roleKey: row.roleKey,
-    status: row.status,
+    roleCode: row.roleCode,
     remark: row.remark
   })
   dialogVisible.value = true
 }
 
 async function showPermDialog(row) {
-  currentRoleId.value = row.roleId || row.id
+  currentRoleId.value = row.id
   try {
-    const res = await getRolePermissions(row.roleId || row.id)
-    checkedMenuIds.value = (res.data || []).map(p => p.menuId || p.id)
+    const res = await getRolePermissions(row.id)
+    checkedMenuIds.value = res.data || []
   } catch (error) {
     console.error('加载角色权限失败', error)
     checkedMenuIds.value = []
@@ -172,10 +157,9 @@ async function showPermDialog(row) {
 
 function resetForm() {
   Object.assign(roleForm, {
-    roleId: null,
+    id: null,
     roleName: '',
-    roleKey: '',
-    status: '0',
+    roleCode: '',
     remark: ''
   })
 }
@@ -187,8 +171,8 @@ async function handleSubmit() {
   submitLoading.value = true
   try {
     if (isEdit.value) {
-      const { roleId, ...data } = roleForm
-      await updateRole(roleId, data)
+      const { id, ...data } = roleForm
+      await updateRole(id, data)
       ElMessage.success('更新成功')
     } else {
       await createRole(roleForm)
@@ -211,7 +195,7 @@ async function handlePermSubmit() {
   
   submitLoading.value = true
   try {
-    await assignPermissions(currentRoleId.value, menuIds)
+    await assignPermissions(currentRoleId.value, { permissionIds: menuIds })
     ElMessage.success('权限设置成功')
     permDialogVisible.value = false
   } catch (error) {
@@ -224,7 +208,7 @@ async function handlePermSubmit() {
 async function handleDelete(row) {
   try {
     await ElMessageBox.confirm('确认删除该角色？', '提示', { type: 'warning' })
-    await deleteRole(row.roleId || row.id)
+    await deleteRole(row.id)
     ElMessage.success('删除成功')
     loadRoleList()
   } catch {

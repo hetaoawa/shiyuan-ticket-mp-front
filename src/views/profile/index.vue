@@ -36,6 +36,14 @@
                   <span v-if="!userStore.roles.length">-</span>
                 </span>
               </div>
+              <div class="info-item">
+                <span class="label">手机号</span>
+                <span class="value">{{ userStore.phone || '未填写' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="label">邮箱</span>
+                <span class="value">{{ userStore.email || '未填写' }}</span>
+              </div>
             </div>
           </div>
         </el-card>

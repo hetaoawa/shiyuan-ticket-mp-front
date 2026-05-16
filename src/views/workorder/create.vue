@@ -80,7 +80,7 @@
         </el-form-item>
 
         <el-form-item label="举证截图">
-          <FileUpload v-model="form.fileIds" :limit="5" />
+          <FileUpload ref="fileUploadRef" v-model="form.fileIds" :limit="5" deferred />
         </el-form-item>
 
         <el-form-item>
@@ -97,13 +97,14 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { createWorkOrder } from '@/api/workorder'
+import { createWorkOrder, aiParse } from '@/api/workorder'
 import { ElMessage } from 'element-plus'
 import FileUpload from '@/components/FileUpload.vue'
 
 const router = useRouter()
 
 const formRef = ref(null)
+const fileUploadRef = ref(null)
 const nlpText = ref('')
 const nlpLoading = ref(false)
 const submitLoading = ref(false)
@@ -125,7 +126,7 @@ const rules = {
   priority: [{ required: true, message: '请选择优先级', trigger: 'change' }],
 }
 
-// NLP 智能解析（Mock）
+// NLP 智能解析
 async function handleNlpParse() {
   if (!nlpText.value.trim()) {
     ElMessage.warning('请输入物流诉求文本')
@@ -134,45 +135,25 @@ async function handleNlpParse() {
 
   nlpLoading.value = true
   try {
-    // Mock 延迟
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    const res = await aiParse(nlpText.value)
+    const data = res.data
 
-    // 简单的关键词匹配模拟 NLP 解析
-    const text = nlpText.value
-    let type = 'OTHER'
-    let trackingNo = ''
-    let targetAddress = ''
-
-    // 提取物流单号（简单正则）
-    const trackingMatch = text.match(/[A-Z]{2}\d{6,}/i)
-    if (trackingMatch) {
-      trackingNo = trackingMatch[0]
-    }
-
-    // 识别工单类型
-    if (text.includes('改地址') || text.includes('地址')) {
-      type = 'CHANGE_ADDRESS'
-      // 提取地址
-      const addrMatch = text.match(/(?:改地址|地址)[：:]\s*(.+)/)
-      if (addrMatch) targetAddress = addrMatch[1]
-    } else if (text.includes('拦截')) {
-      type = 'INTERCEPT'
-    } else if (text.includes('破损') || text.includes('损坏')) {
-      type = 'DAMAGE'
-    } else if (text.includes('丢失') || text.includes('丢件')) {
-      type = 'LOST'
-    }
-
-    // 填充表单
-    form.type = type
-    form.trackingNo = trackingNo
-    form.title = `${getOrderTypeLabel(type)}工单${trackingNo ? ' - ' + trackingNo : ''}`
-    form.description = text
-    form.targetAddress = targetAddress
+    form.type = data.type || 'OTHER'
+    form.trackingNo = data.trackingNo || ''
+    form.title = data.title || ''
+    form.description = data.description || ''
+    form.targetAddress = data.targetAddress || ''
+    form.priority = data.priority || 2
 
     ElMessage.success('智能识别完成，请检查并补充信息')
   } catch (error) {
-    ElMessage.error('解析失败，请手动填写')
+    if (error.response?.status === 429) {
+      ElMessage.error('请求过于频繁，请稍后再试（每分钟最多10次）')
+    } else if (error.response?.status === 400) {
+      ElMessage.error('不合法的输入')
+    } else {
+      ElMessage.error('解析失败，请手动填写')
+    }
   } finally {
     nlpLoading.value = false
   }
@@ -197,14 +178,21 @@ async function handleSubmit() {
 
   submitLoading.value = true
   try {
-    await createWorkOrder({
+    const data = {
       title: form.title,
       description: form.description,
       trackingNo: form.trackingNo,
       targetAddress: form.targetAddress,
-      type: form.type,
       priority: form.priority,
-    })
+    }
+    if (form.type) data.type = form.type
+    const res = await createWorkOrder(data)
+
+    const workOrderId = res.data?.id
+    if (fileUploadRef.value && workOrderId) {
+      await fileUploadRef.value.uploadAll(workOrderId)
+    }
+
     ElMessage.success('工单创建成功')
     router.push('/workorder/list')
   } catch (error) {

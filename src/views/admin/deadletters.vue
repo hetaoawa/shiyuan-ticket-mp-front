@@ -44,8 +44,10 @@
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
+        :page-sizes="[10, 20, 50]"
         :total="pagination.total"
-        layout="total, prev, pager, next"
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="handleSizeChange"
         @current-change="loadData"
       />
     </el-card>
@@ -66,6 +68,11 @@ const pagination = reactive({
   total: 0,
 })
 
+function handleSizeChange() {
+  pagination.page = 1
+  loadData()
+}
+
 async function loadData() {
   loading.value = true
   try {
@@ -73,8 +80,8 @@ async function loadData() {
       page: pagination.page,
       pageSize: pagination.pageSize,
     })
-    tableData.value = res.data || []
-    pagination.total = res.total || 0
+    tableData.value = res.data?.records ?? res.data ?? []
+    pagination.total = Number(res.data?.total ?? res.total) || 0
   } catch (error) {
     // 错误已在 request.js 中处理
   } finally {

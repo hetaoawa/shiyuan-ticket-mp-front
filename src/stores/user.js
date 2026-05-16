@@ -7,6 +7,9 @@ export const useUserStore = defineStore('user', () => {
   const userId = ref(null)
   const username = ref('')
   const nickname = ref('')
+  const phone = ref('')
+  const email = ref('')
+  const tenantId = ref(null)
   const roles = ref([])
   const permissions = ref([])
   const menuTree = ref([])
@@ -32,6 +35,7 @@ export const useUserStore = defineStore('user', () => {
     setToken(res.token)
     userId.value = res.userId
     username.value = res.username
+    tenantId.value = res.tenantId
     return res
   }
 
@@ -43,6 +47,9 @@ export const useUserStore = defineStore('user', () => {
     userId.value = res.userId
     username.value = res.username
     nickname.value = res.nickname || res.username
+    phone.value = res.phone || ''
+    email.value = res.email || ''
+    tenantId.value = res.tenantId
     roles.value = res.roles || []
     permissions.value = res.permissions || []
     return res
@@ -62,11 +69,23 @@ export const useUserStore = defineStore('user', () => {
     userId.value = null
     username.value = ''
     nickname.value = ''
+    phone.value = ''
+    email.value = ''
+    tenantId.value = null
     roles.value = []
     permissions.value = []
     menuTree.value = []
     routerLoaded.value = false
     localStorage.removeItem('token')
+  }
+
+  async function logout() {
+    try {
+      await request({ url: '/auth/logout', method: 'post' })
+    } catch (e) {
+      // 即使后端登出失败也要清理前端状态
+    }
+    resetState()
   }
 
   function setRouterLoaded(val) {
@@ -78,6 +97,9 @@ export const useUserStore = defineStore('user', () => {
     userId,
     username,
     nickname,
+    phone,
+    email,
+    tenantId,
     roles,
     permissions,
     menuTree,
@@ -87,6 +109,7 @@ export const useUserStore = defineStore('user', () => {
     getUserInfo,
     getMenuTree,
     resetState,
+    logout,
     setRouterLoaded
   }
 })

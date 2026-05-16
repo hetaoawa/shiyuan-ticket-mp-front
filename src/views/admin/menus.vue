@@ -15,7 +15,7 @@
       <el-table
         :data="menuTree"
         v-loading="loading"
-        row-key="menuId"
+        row-key="id"
         :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
         border
         default-expand-all
@@ -55,7 +55,7 @@
           <el-tree-select
             v-model="menuForm.parentId"
             :data="menuTreeOptions"
-            :props="{ label: 'menuName', value: 'menuId', children: 'children' }"
+            :props="{ label: 'menuName', value: 'id', children: 'children' }"
             placeholder="请选择上级菜单（留空为顶级菜单）"
             clearable
             check-strictly
@@ -88,8 +88,8 @@
         </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="menuForm.status">
-            <el-radio label="0">正常</el-radio>
-            <el-radio label="1">停用</el-radio>
+            <el-radio value="0">正常</el-radio>
+            <el-radio value="1">停用</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
@@ -117,7 +117,7 @@ const isEdit = ref(false)
 
 const menuFormRef = ref(null)
 const menuForm = reactive({
-  menuId: null,
+  id: null,
   parentId: null,
   menuName: '',
   menuCode: '',
@@ -137,7 +137,7 @@ const rules = {
 
 // 菜单树选项（用于上级菜单选择）
 const menuTreeOptions = computed(() => {
-  return [{ menuId: 0, menuName: '顶级菜单', children: menuTree.value }]
+  return [{ id: 0, menuName: '顶级菜单', children: menuTree.value }]
 })
 
 // 获取菜单类型标签样式
@@ -171,7 +171,7 @@ function showAddDialog(parent) {
   dialogTitle.value = '新增菜单'
   resetForm()
   if (parent) {
-    menuForm.parentId = parent.menuId
+    menuForm.parentId = parent.id
   }
   dialogVisible.value = true
 }
@@ -181,7 +181,7 @@ function showEditDialog(row) {
   isEdit.value = true
   dialogTitle.value = '编辑菜单'
   Object.assign(menuForm, {
-    menuId: row.menuId,
+    id: row.id,
     parentId: row.parentId || 0,
     menuName: row.menuName,
     menuCode: row.menuCode,
@@ -190,7 +190,7 @@ function showEditDialog(row) {
     icon: row.icon || '',
     sortOrder: row.sortOrder || 0,
     permissionCode: row.permissionCode || '',
-    status: row.status || '0'
+    status: row.status ?? '0'
   })
   dialogVisible.value = true
 }
@@ -198,7 +198,7 @@ function showEditDialog(row) {
 // 重置表单
 function resetForm() {
   Object.assign(menuForm, {
-    menuId: null,
+    id: null,
     parentId: null,
     menuName: '',
     menuCode: '',
@@ -219,8 +219,8 @@ async function handleSubmit() {
   submitLoading.value = true
   try {
     if (isEdit.value) {
-      const { menuId, ...data } = menuForm
-      await updateMenu(menuId, data)
+      const { id, ...data } = menuForm
+      await updateMenu(id, data)
       ElMessage.success('更新成功')
     } else {
       await createMenu(menuForm)
@@ -239,7 +239,7 @@ async function handleSubmit() {
 async function handleDelete(row) {
   try {
     await ElMessageBox.confirm('确认删除该菜单？删除后子菜单也将被删除！', '提示', { type: 'warning' })
-    await deleteMenu(row.menuId)
+    await deleteMenu(row.id)
     ElMessage.success('删除成功')
     loadMenuTree()
   } catch {

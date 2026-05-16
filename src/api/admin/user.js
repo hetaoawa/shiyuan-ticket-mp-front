@@ -1,9 +1,18 @@
 import request from '@/utils/request'
 
-// 获取用户列表
+// 获取用户列表（需要管理员权限）
 export function getUserList(params) {
   return request({
     url: '/admin/users',
+    method: 'get',
+    params,
+  })
+}
+
+// 获取简化的用户列表（普通用户可用）
+export function getSimpleUserList(params) {
+  return request({
+    url: '/admin/users/simple',
     method: 'get',
     params,
   })

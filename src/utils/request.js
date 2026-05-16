@@ -1,4 +1,5 @@
 import axios from 'axios'
+import JSONbig from 'json-bigint'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import router from '@/router'
@@ -10,6 +11,16 @@ const service = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // 使用 json-bigint 解析响应，避免大整数精度丢失
+  transformResponse: [
+    function (data) {
+      try {
+        return JSONbig.parse(data)
+      } catch (e) {
+        return data
+      }
+    },
+  ],
 })
 
 // 请求拦截器 - 自动携带 Sa-Token
@@ -29,6 +40,11 @@ service.interceptors.request.use(
 // 响应拦截器 - 统一处理错误
 service.interceptors.response.use(
   (response) => {
+    // 如果是 blob 类型响应（文件下载），直接返回
+    if (response.config.responseType === 'blob') {
+      return response.data
+    }
+
     const res = response.data
 
     // 分页响应直接返回

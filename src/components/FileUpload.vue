@@ -1,34 +1,40 @@
 <template>
   <div class="file-upload" v-loading="loading">
+    <!-- 图片列表（两种模式共用） -->
+    <div class="file-list" v-if="fileList.length > 0">
+      <div v-for="(file, index) in fileList" :key="file.fileId" class="file-item-wrapper">
+        <div class="file-item" @click="handlePreviewByIndex(index)">
+          <img v-if="file.url" :src="file.url" class="file-thumbnail" />
+          <div v-else class="file-placeholder">
+            <el-icon><Document /></el-icon>
+          </div>
+          <div class="file-name">{{ file.name }}</div>
+        </div>
+        <el-icon
+          v-if="!readonly"
+          class="file-delete-btn"
+          @click.stop="handleDelete(file)"
+        >
+          <Delete />
+        </el-icon>
+      </div>
+    </div>
+
+    <!-- 上传按钮（非只读模式） -->
     <el-upload
-      v-if="!readonly"
-      :file-list="fileList"
+      v-if="!readonly && fileList.length < limit"
+      :show-file-list="false"
       :http-request="handleUpload"
       :before-upload="beforeUpload"
-      :on-remove="handleRemove"
-      :on-preview="handlePreview"
-      :limit="limit"
-      :on-exceed="handleExceed"
       accept="image/*"
-      list-type="picture-card"
     >
-      <el-icon><Plus /></el-icon>
-      <template #tip>
-        <div class="el-upload__tip">只能上传图片文件，且不超过 10MB</div>
-      </template>
+      <div class="upload-trigger">
+        <el-icon><Plus /></el-icon>
+      </div>
     </el-upload>
 
-    <!-- 只读模式：只展示图片列表 -->
-    <div v-else class="file-list-readonly">
-      <div v-for="(file, index) in fileList" :key="file.fileId" class="file-item" @click="handlePreviewByIndex(index)">
-        <img v-if="file.url" :src="file.url" class="file-thumbnail" />
-        <div v-else class="file-placeholder">
-          <el-icon><Document /></el-icon>
-        </div>
-        <div class="file-name">{{ file.name }}</div>
-      </div>
-      <div v-if="fileList.length === 0" class="no-files">暂无文件</div>
-    </div>
+    <div v-if="!readonly" class="el-upload__tip">只能上传图片文件，且不超过 10MB</div>
+    <div v-if="fileList.length === 0 && readonly" class="no-files">暂无文件</div>
 
     <!-- 图片预览弹窗（支持多图切换） -->
     <el-dialog v-model="previewVisible" title="图片预览" width="700px" destroy-on-close>
@@ -50,9 +56,9 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
-import { Plus, ArrowLeft, ArrowRight, Document } from '@element-plus/icons-vue'
-import { getPresignUrl, confirmUpload, getDownloadUrl, getFilesByBiz } from '@/api/file'
-import { ElMessage } from 'element-plus'
+import { Plus, ArrowLeft, ArrowRight, Document, Delete } from '@element-plus/icons-vue'
+import { getPresignUrl, confirmUpload, getDownloadUrl, getFilesByBiz, deleteFile } from '@/api/file'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const props = defineProps({
   modelValue: {
@@ -74,10 +80,14 @@ const props = defineProps({
   readonly: {
     type: Boolean,
     default: false
+  },
+  deferred: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'upload-success'])
 
 const fileList = ref([])
 const previewVisible = ref(false)
@@ -85,6 +95,7 @@ const previewUrl = ref('')
 const previewList = ref([])
 const previewIndex = ref(0)
 const loading = ref(false)
+const pendingFiles = ref([])
 
 onMounted(() => {
   if (props.bizId) {
@@ -169,6 +180,24 @@ function beforeUpload(file) {
 
 async function handleUpload(options) {
   const file = options.file
+
+  if (props.deferred) {
+    const previewUrl = URL.createObjectURL(file)
+    pendingFiles.value.push({
+      file,
+      name: file.name,
+      url: previewUrl
+    })
+    fileList.value.push({
+      name: file.name,
+      url: previewUrl,
+      fileId: null,
+      pending: true
+    })
+    ElMessage.success('文件已暂存')
+    return
+  }
+
   try {
     const presignRes = await getPresignUrl({
       originalName: file.name,
@@ -207,22 +236,87 @@ async function handleUpload(options) {
   }
 }
 
-function handleRemove(file) {
-  const newValue = props.modelValue.filter(id => id !== file.fileId)
-  emit('update:modelValue', newValue)
+async function uploadAll(bizId) {
+  if (!bizId || pendingFiles.value.length === 0) return
+
+  loading.value = true
+  const uploadedIds = []
+
+  try {
+    for (const pending of pendingFiles.value) {
+      const file = pending.file
+      const presignRes = await getPresignUrl({
+        originalName: file.name,
+        contentType: file.type,
+        fileSize: file.size,
+        bizType: props.bizType,
+        bizId: bizId
+      })
+
+      const { fileId, uploadUrl } = presignRes.data
+
+      await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type }
+      })
+
+      await confirmUpload(fileId)
+
+      const downloadRes = await getDownloadUrl(fileId)
+      const downloadUrl = downloadRes.data?.downloadUrl || ''
+
+      const index = fileList.value.findIndex(f => f.name === file.name && f.pending)
+      if (index !== -1) {
+        fileList.value[index] = {
+          name: file.name,
+          url: downloadUrl,
+          fileId: fileId,
+          pending: false
+        }
+      }
+
+      uploadedIds.push(fileId)
+    }
+
+    pendingFiles.value = []
+    emit('update:modelValue', uploadedIds)
+    emit('upload-success', uploadedIds)
+    ElMessage.success(`${uploadedIds.length} 个文件上传成功`)
+  } catch (error) {
+    ElMessage.error('文件上传失败')
+    throw error
+  } finally {
+    loading.value = false
+  }
 }
 
-function handleExceed() {
-  ElMessage.warning(`最多上传 ${props.limit} 个文件`)
-}
+defineExpose({ uploadAll })
 
-function handlePreview(file) {
-  const index = fileList.value.findIndex(f => f.fileId === file.fileId)
-  if (index !== -1) {
-    previewList.value = fileList.value.filter(f => f.url)
-    previewIndex.value = previewList.value.findIndex(f => f.fileId === file.fileId)
-    if (previewIndex.value === -1) previewIndex.value = 0
-    previewVisible.value = true
+async function handleDelete(file) {
+  try {
+    await ElMessageBox.confirm('确定要删除这张图片吗？', '确认删除', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+
+    if (file.pending) {
+      pendingFiles.value = pendingFiles.value.filter(f => f.name !== file.name)
+      if (file.url) URL.revokeObjectURL(file.url)
+    } else if (file.fileId != null) {
+      await deleteFile(file.fileId)
+    }
+
+    fileList.value = fileList.value.filter(f => f.fileId !== file.fileId || f.name !== file.name)
+    const newValue = props.modelValue.filter(id => id !== file.fileId)
+    emit('update:modelValue', newValue)
+
+    ElMessage.success('删除成功')
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除失败')
+    }
   }
 }
 
@@ -252,15 +346,22 @@ function nextImage() {
   margin-top: 8px;
 }
 
-.file-list-readonly {
+.file-list {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  margin-bottom: 12px;
+}
+
+.file-item-wrapper {
+  position: relative;
+  width: 148px;
+  height: 148px;
 }
 
 .file-item {
-  width: 148px;
-  height: 148px;
+  width: 100%;
+  height: 100%;
   border: 1px solid #dcdfe6;
   border-radius: 6px;
   overflow: hidden;
@@ -272,6 +373,49 @@ function nextImage() {
 
 .file-item:hover {
   border-color: #409eff;
+}
+
+.file-delete-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  background: #f56c6c;
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  z-index: 10;
+  transition: background 0.3s;
+}
+
+.file-delete-btn:hover {
+  background: #f78989;
+}
+
+.upload-trigger {
+  width: 148px;
+  height: 148px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.3s;
+}
+
+.upload-trigger:hover {
+  border-color: #409eff;
+}
+
+.upload-trigger .el-icon {
+  font-size: 28px;
+  color: #909399;
 }
 
 .file-thumbnail {

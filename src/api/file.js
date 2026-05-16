@@ -3,7 +3,7 @@ import request from '@/utils/request'
 // 获取上传预签名 URL
 export function getPresignUrl(data) {
   return request({
-    url: '/api/files/presign',
+    url: '/files/presign',
     method: 'post',
     data,
   })
@@ -12,7 +12,7 @@ export function getPresignUrl(data) {
 // 确认上传完成
 export function confirmUpload(fileId) {
   return request({
-    url: `/api/files/${fileId}/confirm`,
+    url: `/files/${fileId}/confirm`,
     method: 'post',
   })
 }
@@ -20,7 +20,7 @@ export function confirmUpload(fileId) {
 // 获取下载预签名 URL
 export function getDownloadUrl(fileId) {
   return request({
-    url: `/api/files/${fileId}/download`,
+    url: `/files/${fileId}/download`,
     method: 'get',
   })
 }
@@ -28,8 +28,16 @@ export function getDownloadUrl(fileId) {
 // 查询业务关联文件
 export function getFilesByBiz(bizType, bizId) {
   return request({
-    url: '/api/files',
+    url: '/files',
     method: 'get',
     params: { bizType, bizId },
+  })
+}
+
+// 删除文件
+export function deleteFile(fileId) {
+  return request({
+    url: `/files/${fileId}`,
+    method: 'delete',
   })
 }

@@ -4,7 +4,7 @@
     <el-card class="search-card" shadow="never">
       <el-form :model="searchForm" inline>
         <el-form-item label="状态">
-          <el-select v-model="searchForm.status" placeholder="全部状态" clearable>
+          <el-select v-model="searchForm.status" placeholder="全部状态" clearable class="status-select">
             <el-option label="待处理" value="PENDING" />
             <el-option label="处理中" value="IN_PROGRESS" />
             <el-option label="已关闭" value="CLOSED" />
@@ -13,6 +13,17 @@
         </el-form-item>
         <el-form-item label="物流单号">
           <el-input v-model="searchForm.trackingNo" placeholder="请输入物流单号" clearable />
+        </el-form-item>
+        <el-form-item label="创建时间">
+          <el-date-picker
+            v-model="searchForm.createdTimeRange"
+            type="datetimerange"
+            range-separator="至"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            clearable
+          />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">查询</el-button>
@@ -26,19 +37,39 @@
       <template #header>
         <div class="card-header">
           <span>工单列表</span>
-          <el-button
-            v-hasPermi="['workorder:create']"
-            type="primary"
-            icon="Plus"
-            @click="showCreateDialog = true"
-          >
-            创建工单
-          </el-button>
+          <div class="header-actions">
+            <el-button
+              v-hasPermi="['workorder:export']"
+              type="success"
+              icon="Download"
+              @click="handleExport"
+            >
+              导出 CSV
+            </el-button>
+            <el-button
+              v-hasPermi="['workorder:assign']"
+              type="warning"
+              icon="Promotion"
+              :disabled="selectedRows.length === 0"
+              @click="showBatchAssignDialog"
+            >
+              批量派发 ({{ selectedRows.length }})
+            </el-button>
+            <el-button
+              v-hasPermi="['workorder:create']"
+              type="primary"
+              icon="Plus"
+              @click="showCreateDialog = true"
+            >
+              创建工单
+            </el-button>
+          </div>
         </div>
       </template>
 
       <!-- 表格 -->
-      <el-table :data="tableData" v-loading="loading" stripe>
+      <el-table :data="tableData" v-loading="loading" stripe @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="55" />
         <el-table-column prop="id" label="工单ID" width="180" show-overflow-tooltip />
         <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
         <el-table-column prop="trackingNo" label="物流单号" width="150" show-overflow-tooltip />
@@ -159,7 +190,7 @@
         </el-form-item>
 
         <el-form-item label="举证截图">
-          <FileUpload v-model="form.fileIds" :limit="5" />
+          <FileUpload ref="fileUploadRef" v-model="form.fileIds" :limit="5" deferred />
         </el-form-item>
       </el-form>
 
@@ -170,13 +201,41 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 批量派发弹窗 -->
+    <el-dialog v-model="batchAssignVisible" title="批量派发工单" width="450px">
+      <el-alert
+        :title="`已选择 ${selectedRows.length} 个工单`"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px;"
+      />
+      <el-form :model="batchAssignForm" label-width="80px">
+        <el-form-item label="处理人" required>
+          <el-select v-model="batchAssignForm.assigneeId" placeholder="请选择处理人" filterable>
+            <el-option
+              v-for="user in userList"
+              :key="user.id"
+              :label="`${user.nickname || user.username} (${user.username})`"
+              :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchAssignVisible = false">取消</el-button>
+        <el-button type="primary" :loading="batchLoading" @click="handleBatchAssign">确定派发</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getWorkOrderList, createWorkOrder } from '@/api/workorder'
+import { getWorkOrderList, createWorkOrder, batchAssignWorkOrder, exportWorkOrders, aiParse } from '@/api/workorder'
+import { getSimpleUserList } from '@/api/admin/user'
 import { ElMessage } from 'element-plus'
 import FileUpload from '@/components/FileUpload.vue'
 
@@ -185,9 +244,15 @@ const router = useRouter()
 const loading = ref(false)
 const tableData = ref([])
 const showCreateDialog = ref(false)
+const selectedRows = ref([])
+const batchAssignVisible = ref(false)
+const batchLoading = ref(false)
+const batchAssignForm = reactive({ assigneeId: '' })
+const userList = ref([])
 
 // 创建工单相关
 const formRef = ref(null)
+const fileUploadRef = ref(null)
 const nlpText = ref('')
 const nlpLoading = ref(false)
 const submitLoading = ref(false)
@@ -211,6 +276,7 @@ const rules = {
 const searchForm = reactive({
   status: '',
   trackingNo: '',
+  createdTimeRange: [],
 })
 
 // 分页参数
@@ -255,22 +321,30 @@ function getPriorityLabel(priority) {
 }
 
 // 加载数据
+function buildSearchParams(includePage = true) {
+  const params = {}
+  if (includePage) {
+    Object.assign(params, {
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+    })
+  }
+  if (searchForm.status) params.status = searchForm.status
+  if (searchForm.trackingNo) params.trackingNo = searchForm.trackingNo
+  if (searchForm.createdTimeRange?.length === 2) {
+    params.createdStartTime = searchForm.createdTimeRange[0]
+    params.createdEndTime = searchForm.createdTimeRange[1]
+  }
+  return params
+}
+
 async function loadData() {
   loading.value = true
   try {
-    const params = {
-      page: pagination.page,
-      pageSize: pagination.pageSize,
-    }
-    if (searchForm.status) {
-      params.status = searchForm.status
-    }
-    if (searchForm.trackingNo) {
-      params.trackingNo = searchForm.trackingNo
-    }
+    const params = buildSearchParams()
     const res = await getWorkOrderList(params)
     tableData.value = res.data || []
-    pagination.total = res.total || 0
+    pagination.total = Number(res.total) || 0
   } catch (error) {
     // 错误已在 request.js 中处理
   } finally {
@@ -288,6 +362,7 @@ function handleSearch() {
 function handleReset() {
   searchForm.status = ''
   searchForm.trackingNo = ''
+  searchForm.createdTimeRange = []
   handleSearch()
 }
 
@@ -307,7 +382,58 @@ function handlePageChange() {
   loadData()
 }
 
-// NLP 智能解析（Mock）
+// 表格选择变化
+function handleSelectionChange(rows) {
+  selectedRows.value = rows
+}
+
+// 显示批量派发弹窗
+function showBatchAssignDialog() {
+  batchAssignForm.assigneeId = ''
+  batchAssignVisible.value = true
+}
+
+// 批量派发
+async function handleBatchAssign() {
+  if (!batchAssignForm.assigneeId) {
+    ElMessage.warning('请输入处理人ID')
+    return
+  }
+  batchLoading.value = true
+  try {
+    await batchAssignWorkOrder({
+      workOrderIds: selectedRows.value.map((r) => r.id),
+      assigneeId: batchAssignForm.assigneeId,
+    })
+    ElMessage.success(`成功派发 ${selectedRows.value.length} 个工单`)
+    batchAssignVisible.value = false
+    loadData()
+  } catch (error) {
+    // 错误已在 request.js 中处理
+  } finally {
+    batchLoading.value = false
+  }
+}
+
+// 导出 CSV
+async function handleExport() {
+  try {
+    const params = buildSearchParams(false)
+    const res = await exportWorkOrders(params)
+    const blob = new Blob([res], { type: 'text/csv;charset=utf-8' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `工单列表_${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    ElMessage.error('导出失败')
+  }
+}
+
+// NLP 智能解析
 async function handleNlpParse() {
   if (!nlpText.value.trim()) {
     ElMessage.warning('请输入物流诉求文本')
@@ -316,39 +442,25 @@ async function handleNlpParse() {
 
   nlpLoading.value = true
   try {
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    const res = await aiParse(nlpText.value)
+    const data = res.data
 
-    const text = nlpText.value
-    let type = 'OTHER'
-    let trackingNo = ''
-    let targetAddress = ''
-
-    const trackingMatch = text.match(/[A-Z]{2}\d{6,}/i)
-    if (trackingMatch) {
-      trackingNo = trackingMatch[0]
-    }
-
-    if (text.includes('改地址') || text.includes('地址')) {
-      type = 'CHANGE_ADDRESS'
-      const addrMatch = text.match(/(?:改地址|地址)[：:]\s*(.+)/)
-      if (addrMatch) targetAddress = addrMatch[1]
-    } else if (text.includes('拦截')) {
-      type = 'INTERCEPT'
-    } else if (text.includes('破损') || text.includes('损坏')) {
-      type = 'DAMAGE'
-    } else if (text.includes('丢失') || text.includes('丢件')) {
-      type = 'LOST'
-    }
-
-    form.type = type
-    form.trackingNo = trackingNo
-    form.title = `${getOrderTypeLabel(type)}工单${trackingNo ? ' - ' + trackingNo : ''}`
-    form.description = text
-    form.targetAddress = targetAddress
+    form.type = data.type || 'OTHER'
+    form.trackingNo = data.trackingNo || ''
+    form.title = data.title || ''
+    form.description = data.description || ''
+    form.targetAddress = data.targetAddress || ''
+    form.priority = data.priority || 2
 
     ElMessage.success('智能识别完成，请检查并补充信息')
   } catch (error) {
-    ElMessage.error('解析失败，请手动填写')
+    if (error.response?.status === 429) {
+      ElMessage.error('请求过于频繁，请稍后再试（每分钟最多10次）')
+    } else if (error.response?.status === 400) {
+      ElMessage.error('不合法的输入')
+    } else {
+      ElMessage.error('解析失败，请手动填写')
+    }
   } finally {
     nlpLoading.value = false
   }
@@ -373,14 +485,21 @@ async function handleSubmit() {
 
   submitLoading.value = true
   try {
-    await createWorkOrder({
+    const data = {
       title: form.title,
       description: form.description,
       trackingNo: form.trackingNo,
       targetAddress: form.targetAddress,
-      type: form.type,
       priority: form.priority,
-    })
+    }
+    if (form.type) data.type = form.type
+    const res = await createWorkOrder(data)
+
+    const workOrderId = res.data?.id
+    if (fileUploadRef.value && workOrderId) {
+      await fileUploadRef.value.uploadAll(workOrderId)
+    }
+
     ElMessage.success('工单创建成功')
     showCreateDialog.value = false
     loadData()
@@ -397,8 +516,19 @@ function handleDialogClosed() {
   nlpText.value = ''
 }
 
+// 加载用户列表
+async function loadUserList() {
+  try {
+    const res = await getSimpleUserList()
+    userList.value = res.data || []
+  } catch {
+    // 忽略用户列表加载错误
+  }
+}
+
 onMounted(() => {
   loadData()
+  loadUserList()
 })
 </script>
 
@@ -419,6 +549,11 @@ onMounted(() => {
   justify-content: space-between;
 }
 
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .el-pagination {
   margin-top: 16px;
   justify-content: flex-end;
@@ -435,5 +570,9 @@ onMounted(() => {
 
 .workorder-form {
   margin-top: 8px;
+}
+
+.status-select {
+  width: 180px;
 }
 </style>
