@@ -10,6 +10,7 @@ export const useUserStore = defineStore('user', () => {
   const phone = ref('')
   const email = ref('')
   const tenantId = ref(null)
+  const externalUserId = ref(null)
   const roles = ref([])
   const permissions = ref([])
   const menuTree = ref([])
@@ -50,6 +51,7 @@ export const useUserStore = defineStore('user', () => {
     phone.value = res.phone || ''
     email.value = res.email || ''
     tenantId.value = res.tenantId
+    externalUserId.value = res.externalUserId || null
     roles.value = res.roles || []
     permissions.value = res.permissions || []
     return res
@@ -72,6 +74,7 @@ export const useUserStore = defineStore('user', () => {
     phone.value = ''
     email.value = ''
     tenantId.value = null
+    externalUserId.value = null
     roles.value = []
     permissions.value = []
     menuTree.value = []
@@ -100,6 +103,7 @@ export const useUserStore = defineStore('user', () => {
     phone,
     email,
     tenantId,
+    externalUserId,
     roles,
     permissions,
     menuTree,

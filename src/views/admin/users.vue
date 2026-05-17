@@ -43,6 +43,11 @@
             {{ row.email || '-' }}
           </template>
         </el-table-column>
+        <el-table-column prop="externalUserId" label="外部用户ID" width="130" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.externalUserId || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="80" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
@@ -75,7 +80,7 @@
 
     <!-- 新增/编辑用户弹窗 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px">
-      <el-form :model="userForm" :rules="rules" ref="userFormRef" label-width="80px">
+      <el-form :model="userForm" :rules="rules" ref="userFormRef" label-width="90px">
         <el-form-item label="用户名" prop="username">
           <el-input v-model="userForm.username" placeholder="请输入用户名" :disabled="isEdit" />
         </el-form-item>
@@ -87,6 +92,9 @@
         </el-form-item>
         <el-form-item label="邮箱" prop="email">
           <el-input v-model="userForm.email" placeholder="请输入邮箱" />
+        </el-form-item>
+        <el-form-item label="外部用户ID" prop="externalUserId">
+          <el-input v-model="userForm.externalUserId" placeholder="外部系统用户ID（选填）" />
         </el-form-item>
         <el-form-item v-if="!isEdit" label="密码" prop="password">
           <el-input v-model="userForm.password" type="password" placeholder="请输入密码" />
@@ -160,6 +168,7 @@ const userForm = reactive({
   nickname: '',
   phone: '',
   email: '',
+  externalUserId: '',
   password: '',
   status: 1,
   roleIds: []
@@ -245,6 +254,7 @@ async function showEditDialog(row) {
     nickname: row.nickname,
     phone: row.phone,
     email: row.email,
+    externalUserId: row.externalUserId || '',
     status: row.status,
     roleIds: []
   })
@@ -273,6 +283,7 @@ function resetForm() {
     nickname: '',
     phone: '',
     email: '',
+    externalUserId: '',
     password: '',
     status: 1,
     roleIds: []
@@ -290,6 +301,7 @@ async function handleSubmit() {
         nickname: userForm.nickname,
         phone: userForm.phone,
         email: userForm.email,
+        externalUserId: userForm.externalUserId || null,
         status: userForm.status,
       })
       // 分配角色
@@ -303,6 +315,7 @@ async function handleSubmit() {
         nickname: userForm.nickname,
         phone: userForm.phone,
         email: userForm.email,
+        externalUserId: userForm.externalUserId || null,
         password: userForm.password,
         status: userForm.status,
         roleIds: userForm.roleIds,

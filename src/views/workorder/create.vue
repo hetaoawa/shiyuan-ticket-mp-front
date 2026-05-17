@@ -83,6 +83,16 @@
           <FileUpload ref="fileUploadRef" v-model="form.fileIds" :limit="5" deferred />
         </el-form-item>
 
+        <el-divider content-position="left">外部货主信息（选填）</el-divider>
+
+        <el-form-item label="外部发送人ID" prop="senderStaffId">
+          <el-input v-model="form.senderStaffId" placeholder="货主侧发送人ID（选填）" />
+        </el-form-item>
+
+        <el-form-item label="外部群ID" prop="conversationId">
+          <el-input v-model="form.conversationId" placeholder="货主侧群ID（选填）" />
+        </el-form-item>
+
         <el-form-item>
           <el-button type="primary" :loading="submitLoading" @click="handleSubmit">
             提交工单
@@ -117,6 +127,8 @@ const form = reactive({
   description: '',
   priority: 2,
   targetAddress: '',
+  senderStaffId: '',
+  conversationId: '',
   fileIds: [],
 })
 
@@ -186,6 +198,8 @@ async function handleSubmit() {
       priority: form.priority,
     }
     if (form.type) data.type = form.type
+    if (form.senderStaffId) data.senderStaffId = form.senderStaffId
+    if (form.conversationId) data.conversationId = form.conversationId
     const res = await createWorkOrder(data)
 
     const workOrderId = res.data?.id
