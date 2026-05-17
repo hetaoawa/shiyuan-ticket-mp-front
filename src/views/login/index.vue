@@ -51,20 +51,6 @@
           </el-button>
         </el-form-item>
       </el-form>
-
-      <div class="test-accounts">
-        <p class="test-title">测试账号：</p>
-        <el-space wrap>
-          <el-tag
-            v-for="account in testAccounts"
-            :key="account.username"
-            class="account-tag"
-            @click="fillAccount(account)"
-          >
-            {{ account.username }} ({{ account.role }})
-          </el-tag>
-        </el-space>
-      </div>
     </el-card>
   </div>
 </template>
@@ -93,19 +79,6 @@ const loginForm = reactive({
 const loginRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
-}
-
-// 测试账号
-const testAccounts = [
-  { username: 'admin', password: 'admin123', role: '系统管理员' },
-  { username: 'warehouse01', password: 'admin123', role: '云仓管理员' },
-  { username: 'cargo01', password: 'admin123', role: '货主' },
-]
-
-// 填充测试账号
-function fillAccount(account) {
-  loginForm.username = account.username
-  loginForm.password = account.password
 }
 
 // 加载保存的登录信息
@@ -200,26 +173,5 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-
-.test-accounts {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #ebeef5;
-}
-
-.test-title {
-  font-size: 13px;
-  color: #909399;
-  margin: 0 0 8px;
-}
-
-.account-tag {
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.account-tag:hover {
-  transform: scale(1.05);
 }
 </style>

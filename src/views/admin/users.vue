@@ -182,7 +182,7 @@ async function loadUserList() {
   loading.value = true
   try {
     const params = {
-      pageNum: searchForm.pageNum,
+      page: searchForm.pageNum,
       pageSize: searchForm.pageSize,
     }
     if (searchForm.username) params.username = searchForm.username
@@ -294,7 +294,7 @@ async function handleSubmit() {
       })
       // 分配角色
       if (userForm.roleIds.length > 0) {
-        await assignRoles(userForm.id, userForm.roleIds)
+        await assignRoles(userForm.id, { role_ids: userForm.roleIds })
       }
       ElMessage.success('更新成功')
     } else {
@@ -325,7 +325,7 @@ async function handleResetPwd() {
   }
   submitLoading.value = true
   try {
-    await resetPassword(resetPwdForm.userId, { password: resetPwdForm.password })
+    await resetPassword(resetPwdForm.userId, { newPassword: resetPwdForm.password })
     ElMessage.success('密码重置成功')
     resetPwdVisible.value = false
   } catch (error) {

@@ -105,7 +105,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { UserFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import request from '@/utils/request'
+import { getUserInfo, changePassword, updateProfile } from '@/api/auth'
 
 const userStore = useUserStore()
 
@@ -154,10 +154,7 @@ const pwdRules = {
 // 加载用户信息
 async function loadUserInfo() {
   try {
-    const res = await request({
-      url: '/auth/me',
-      method: 'get'
-    })
+    const res = await getUserInfo()
     profileForm.username = res.username
     profileForm.nickname = res.nickname || ''
     profileForm.phone = res.phone || ''
@@ -174,18 +171,16 @@ async function handleUpdateProfile() {
   
   profileLoading.value = true
   try {
-    await request({
-      url: '/auth/profile',
-      method: 'put',
-      data: {
-        nickname: profileForm.nickname,
-        phone: profileForm.phone,
-        email: profileForm.email
-      }
+    await updateProfile({
+      nickname: profileForm.nickname,
+      phone: profileForm.phone,
+      email: profileForm.email
     })
     ElMessage.success('个人信息更新成功')
-    // 更新 Store 中的昵称
+    // 同步 Store 中的昵称、手机号、邮箱
     userStore.nickname = profileForm.nickname
+    userStore.phone = profileForm.phone
+    userStore.email = profileForm.email
   } catch (error) {
     console.error('更新个人信息失败', error)
   } finally {
@@ -200,13 +195,9 @@ async function handleChangePassword() {
   
   pwdLoading.value = true
   try {
-    await request({
-      url: '/auth/password',
-      method: 'put',
-      data: {
-        oldPassword: pwdForm.oldPassword,
-        newPassword: pwdForm.newPassword
-      }
+    await changePassword({
+      oldPassword: pwdForm.oldPassword,
+      newPassword: pwdForm.newPassword
     })
     ElMessage.success('密码修改成功，请重新登录')
     // 清空密码表单
