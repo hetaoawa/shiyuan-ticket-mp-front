@@ -35,3 +35,21 @@ export function getMenuTree() {
     method: 'get',
   })
 }
+
+// 修改当前用户密码
+export function changePassword(data) {
+  return request({
+    url: '/auth/password',
+    method: 'put',
+    data,
+  })
+}
+
+// 更新当前用户个人信息
+export function updateProfile(data) {
+  return request({
+    url: '/auth/profile',
+    method: 'put',
+    data,
+  })
+}
