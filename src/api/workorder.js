@@ -35,12 +35,12 @@ export function getWorkOrderDetail(id) {
   })
 }
 
-// 派发工单
-export function assignWorkOrder(id, assigneeId) {
+// 派发工单（支持按用户或按角色派发）
+export function assignWorkOrder(id, params) {
   return request({
     url: `/workorders/${id}/assign`,
     method: 'post',
-    params: { assigneeId },
+    params,
   })
 }
 

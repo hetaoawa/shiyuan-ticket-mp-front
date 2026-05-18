@@ -1,12 +1,13 @@
 <template>
-  <el-container class="layout-container">
-    <!-- 侧边栏 -->
-    <el-aside :width="isCollapse ? '64px' : '220px'" class="layout-aside">
-      <div class="logo-container">
-        <img src="@/assets/logo.svg" alt="Logo" class="logo-img" />
-        <span v-show="!isCollapse" class="logo-text">云仓工单系统</span>
-      </div>
-      <el-menu
+  <el-watermark :content="watermarkContent">
+    <el-container class="layout-container">
+      <!-- 侧边栏 -->
+      <el-aside :width="isCollapse ? '64px' : '220px'" class="layout-aside">
+        <div class="logo-container">
+          <img src="@/assets/project-logo.png" alt="Logo" class="logo-img" />
+          <span v-show="!isCollapse" class="logo-text">中台工单流转系统</span>
+        </div>
+        <el-menu
         :default-active="activeMenu"
         :collapse="isCollapse"
         :unique-opened="true"
@@ -92,8 +93,9 @@
           </transition>
         </router-view>
       </el-main>
+      </el-container>
     </el-container>
-  </el-container>
+  </el-watermark>
 </template>
 
 <script setup>
@@ -106,6 +108,11 @@ import * as ElementPlusIcons from '@element-plus/icons-vue'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+
+const watermarkContent = computed(() => [
+  `用户ID：${String(userStore.userId || '')}`,
+  `用户昵称：${userStore.nickname || userStore.username || ''}`,
+])
 
 const isCollapse = ref(false)
 
@@ -164,9 +171,24 @@ const fallbackMenus = [
 const menuRoutes = computed(() => {
   const menus = userStore.menuTree
   if (!menus || menus.length === 0) return fallbackMenus
+  // 过滤 BUTTON 节点（按钮权限不应显示在侧边栏）
+  const visibleMenus = menus
+    .filter(parent => parent.menuType !== 'BUTTON')
+    .map(parent => {
+      if (!parent.children || parent.children.length === 0) return parent
+      return {
+        ...parent,
+        children: parent.children.filter(child => child.menuType !== 'BUTTON')
+      }
+    })
+    // 过滤掉没有子菜单的 DIR 节点（避免显示空目录）
+    .filter(parent => {
+      if (parent.menuType === 'DIR' && parent.children && parent.children.length === 0) return false
+      return true
+    })
   // 修复后端返回重复路径的 bug（如角色管理路径与用户管理相同）
   const usedPaths = new Set()
-  return menus.map(parent => {
+  return visibleMenus.map(parent => {
     if (!parent.children || parent.children.length === 0) return parent
     return {
       ...parent,

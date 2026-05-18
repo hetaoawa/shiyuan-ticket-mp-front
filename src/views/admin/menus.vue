@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>菜单管理</span>
-          <el-button type="primary" @click="showAddDialog(null)">
+          <el-button type="primary" @click="showAddDialog(null)" v-hasPermi="['menu:create']">
             <el-icon><Plus /></el-icon>
             新增菜单
           </el-button>
@@ -40,9 +40,9 @@
         <el-table-column prop="permissionCode" label="权限编码" width="150" />
         <el-table-column label="操作" fixed="right" width="200">
           <template #default="{ row }">
-            <el-button type="primary" link @click="showAddDialog(row)">添加子菜单</el-button>
-            <el-button type="primary" link @click="showEditDialog(row)">编辑</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+            <el-button type="primary" link @click="showAddDialog(row)" v-hasPermi="['menu:create']">添加子菜单</el-button>
+            <el-button type="primary" link @click="showEditDialog(row)" v-hasPermi="['menu:update']">编辑</el-button>
+            <el-button type="danger" link @click="handleDelete(row)" v-hasPermi="['menu:delete']">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

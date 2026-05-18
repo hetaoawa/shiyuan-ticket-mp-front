@@ -91,6 +91,13 @@
             <el-descriptions-item label="描述">
               {{ detail.description || '无' }}
             </el-descriptions-item>
+            <el-descriptions-item label="处理人">
+              <span v-if="detail.assigneeName">{{ detail.assigneeName }}</span>
+              <span v-else-if="detail.assigneeRoleName">{{ detail.assigneeRoleName }}</span>
+              <span v-else-if="detail.assigneeId">用户 {{ detail.assigneeId }}</span>
+              <span v-else-if="detail.assigneeRole">角色 {{ detail.assigneeRole }}</span>
+              <span v-else>未派发</span>
+            </el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ detail.createdAt }}</el-descriptions-item>
             <el-descriptions-item label="更新时间">{{ detail.updatedAt }}</el-descriptions-item>
           </el-descriptions>
@@ -181,6 +188,7 @@
             :loading="commentLoading"
             style="margin-top: 8px;"
             @click="handleAddComment"
+            v-hasPermi="['workorder:comment']"
           >
             发表评论
           </el-button>
@@ -199,15 +207,31 @@
     </el-card>
 
     <!-- 派发弹窗 -->
-    <el-dialog v-model="assignDialogVisible" title="派发工单" width="400px">
+    <el-dialog v-model="assignDialogVisible" title="派发工单" width="450px">
       <el-form :model="assignForm" label-width="80px">
-        <el-form-item label="处理人" required>
+        <el-form-item label="派发方式">
+          <el-radio-group v-model="assignForm.assignType" @change="handleAssignTypeChange">
+            <el-radio value="user">按用户</el-radio>
+            <el-radio value="role">按角色</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="assignForm.assignType === 'user'" label="处理人" required>
           <el-select v-model="assignForm.assigneeId" placeholder="请选择处理人" filterable>
             <el-option
               v-for="user in userList"
               :key="user.id"
               :label="`${user.nickname || user.username} (${user.username})`"
               :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="assignForm.assignType === 'role'" label="角色" required>
+          <el-select v-model="assignForm.assigneeRoleCode" placeholder="请选择角色" filterable>
+            <el-option
+              v-for="role in warehouseRoleOptions"
+              :key="role.roleCode"
+              :label="role.roleName"
+              :value="role.roleCode"
             />
           </el-select>
         </el-form-item>
@@ -345,6 +369,7 @@ import { getAuditLogs } from '@/api/audit'
 import { trackedExpress, traceExpress, getExpressCompanies } from '@/api/express'
 import { getComments, addComment } from '@/api/comment'
 import { getSimpleUserList } from '@/api/admin/user'
+import { getRoleList } from '@/api/admin/role'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CopyDocument } from '@element-plus/icons-vue'
 import FileUpload from '@/components/FileUpload.vue'
@@ -365,6 +390,7 @@ const comments = ref([])
 const commentText = ref('')
 const commentLoading = ref(false)
 const userList = ref([])
+const warehouseRoleOptions = ref([])
 
 // 弹窗控制
 const assignDialogVisible = ref(false)
@@ -375,7 +401,7 @@ const resubmitDialogVisible = ref(false)
 const forceRejectDialogVisible = ref(false)
 
 // 表单数据
-const assignForm = reactive({ assigneeId: '' })
+const assignForm = reactive({ assignType: 'user', assigneeId: '', assigneeRoleCode: '' })
 const closeForm = reactive({ resolution: '' })
 const rejectForm = reactive({ reason: '' })
 const expressQueryForm = reactive({ cpCode: '', mobileLast4: '' })
@@ -552,7 +578,11 @@ async function loadDetail() {
       loadExpressInfo()
     }
   } catch (error) {
-    // 错误已在 request.js 中处理
+    const resData = error.response?.data
+    const msg = resData?.message || error.message || ''
+    if (msg.includes('无权查看此工单') || (resData?.code === 400 && msg.includes('无权'))) {
+      router.replace('/workorder/list')
+    }
   } finally {
     loading.value = false
   }
@@ -603,6 +633,17 @@ async function loadUserList() {
   }
 }
 
+// 加载云仓侧角色列表
+async function loadWarehouseRoles() {
+  try {
+    const res = await getRoleList()
+    const allRoles = res.data || []
+    warehouseRoleOptions.value = allRoles.filter(r => r.roleCode === 'WAREHOUSE_ADMIN')
+  } catch {
+    // 忽略角色列表加载错误
+  }
+}
+
 // 提交评论
 async function handleAddComment() {
   if (!commentText.value.trim()) {
@@ -624,8 +665,16 @@ async function handleAddComment() {
 
 // 显示派发弹窗
 function showAssignDialog() {
+  assignForm.assignType = 'user'
   assignForm.assigneeId = ''
+  assignForm.assigneeRoleCode = ''
   assignDialogVisible.value = true
+}
+
+// 派发方式切换
+function handleAssignTypeChange() {
+  assignForm.assigneeId = ''
+  assignForm.assigneeRoleCode = ''
 }
 
 // 显示关闭弹窗
@@ -659,13 +708,21 @@ function showForceRejectDialog() {
 
 // 派发工单
 async function handleAssign() {
-  if (!assignForm.assigneeId) {
-    ElMessage.warning('请输入处理人ID')
+  if (assignForm.assignType === 'user' && !assignForm.assigneeId) {
+    ElMessage.warning('请选择处理人')
+    return
+  }
+  if (assignForm.assignType === 'role' && !assignForm.assigneeRoleCode) {
+    ElMessage.warning('请选择角色')
     return
   }
   actionLoading.value = true
   try {
-    await assignWorkOrder(detail.value.id, assignForm.assigneeId)
+    if (assignForm.assignType === 'user') {
+      await assignWorkOrder(detail.value.id, { assigneeId: assignForm.assigneeId })
+    } else {
+      await assignWorkOrder(detail.value.id, { assigneeRoleCode: assignForm.assigneeRoleCode })
+    }
     ElMessage.success('派发成功')
     assignDialogVisible.value = false
     loadDetail()
@@ -772,6 +829,7 @@ async function loadExpressCompanies() {
 onMounted(() => {
   loadDetail()
   loadUserList()
+  loadWarehouseRoles()
   loadExpressCompanies()
 })
 </script>

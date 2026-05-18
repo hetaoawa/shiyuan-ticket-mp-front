@@ -124,7 +124,7 @@ import { ElMessage } from 'element-plus'
 const activeTab = ref('basic')
 
 const basicForm = reactive({
-  systemName: '柔性供应链云仓工单系统',
+  systemName: '供应链工单流转管理平台',
   systemLogo: '',
   copyright: '© 2026 Shiyuan. All rights reserved.'
 })

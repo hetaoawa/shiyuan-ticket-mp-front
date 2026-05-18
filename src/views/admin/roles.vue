@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>角色管理</span>
-          <el-button type="primary" @click="showAddDialog">
+          <el-button type="primary" @click="showAddDialog" v-hasPermi="['role:create']">
             <el-icon><Plus /></el-icon>
             新增角色
           </el-button>
@@ -20,9 +20,9 @@
         <el-table-column prop="createdAt" label="创建时间" width="170" />
         <el-table-column label="操作" fixed="right" width="200">
           <template #default="{ row }">
-            <el-button type="primary" link @click="showEditDialog(row)">编辑</el-button>
-            <el-button type="primary" link @click="showPermDialog(row)">权限</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+            <el-button type="primary" link @click="showEditDialog(row)" v-hasPermi="['role:update']">编辑</el-button>
+            <el-button type="primary" link @click="showPermDialog(row)" v-hasPermi="['role:update']">权限</el-button>
+            <el-button type="danger" link @click="handleDelete(row)" v-hasPermi="['role:delete']">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -52,11 +52,11 @@
       <div class="perm-tree-container">
         <el-tree
           ref="permTreeRef"
-          :data="menuTree"
-          :props="{ label: 'menuName', children: 'children' }"
+          :data="permTree"
+          :props="treeProps"
           show-checkbox
-          node-key="menuId"
-          :default-checked-keys="checkedMenuIds"
+          node-key="id"
+          :default-expand-all="true"
         />
       </div>
       <template #footer>
@@ -68,11 +68,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, nextTick } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getRoleList, createRole, updateRole, deleteRole, getRolePermissions, assignPermissions } from '@/api/admin/role'
-import { getMenuTree } from '@/api/admin/menu'
+import { getRoleList, createRole, updateRole, deleteRole, getRolePermissions, assignPermissions, getAllPermissions } from '@/api/admin/role'
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -97,9 +96,40 @@ const rules = {
 
 const permDialogVisible = ref(false)
 const permTreeRef = ref(null)
-const menuTree = ref([])
-const checkedMenuIds = ref([])
+const permTree = ref([])
 const currentRoleId = ref(null)
+
+const treeProps = {
+  label: 'label',
+  children: 'children'
+}
+
+function buildPermTree(permissions) {
+  const groups = {}
+  for (const p of permissions) {
+    const prefix = p.permissionCode.includes(':') ? p.permissionCode.split(':')[0] : 'other'
+    if (!groups[prefix]) groups[prefix] = []
+    groups[prefix].push(p)
+  }
+  return Object.entries(groups).map(([prefix, perms]) => ({
+    id: `group:${prefix}`,
+    label: prefix,
+    selectable: false,
+    children: perms.map(p => ({
+      id: p.id,
+      label: `${p.permissionName} (${p.permissionCode})`,
+    }))
+  }))
+}
+
+async function loadPermTree() {
+  try {
+    const res = await getAllPermissions()
+    permTree.value = buildPermTree(res.data || [])
+  } catch (error) {
+    console.error('加载权限列表失败', error)
+  }
+}
 
 // 加载角色列表
 async function loadRoleList() {
@@ -114,15 +144,6 @@ async function loadRoleList() {
   }
 }
 
-// 加载菜单树
-async function loadMenuTree() {
-  try {
-    const res = await getMenuTree()
-    menuTree.value = res.data || []
-  } catch (error) {
-    console.error('加载菜单树失败', error)
-  }
-}
 
 function showAddDialog() {
   isEdit.value = false
@@ -145,14 +166,18 @@ function showEditDialog(row) {
 
 async function showPermDialog(row) {
   currentRoleId.value = row.id
+  let checkedIds = []
   try {
     const res = await getRolePermissions(row.id)
-    checkedMenuIds.value = res.data || []
+    checkedIds = res.data || []
   } catch (error) {
     console.error('加载角色权限失败', error)
-    checkedMenuIds.value = []
   }
   permDialogVisible.value = true
+  await nextTick()
+  if (permTreeRef.value) {
+    permTreeRef.value.setCheckedKeys(checkedIds, false)
+  }
 }
 
 function resetForm() {
@@ -189,13 +214,12 @@ async function handleSubmit() {
 
 async function handlePermSubmit() {
   if (!permTreeRef.value) return
-  const checkedKeys = permTreeRef.value.getCheckedKeys()
-  const halfCheckedKeys = permTreeRef.value.getHalfCheckedKeys()
-  const menuIds = [...checkedKeys, ...halfCheckedKeys]
+  const allKeys = permTreeRef.value.getCheckedKeys(false)
+  const permissionIds = allKeys.filter(k => typeof k === 'number' || !String(k).startsWith('group:'))
   
   submitLoading.value = true
   try {
-    await assignPermissions(currentRoleId.value, { permissionIds: menuIds })
+    await assignPermissions(currentRoleId.value, { permission_ids: permissionIds })
     ElMessage.success('权限设置成功')
     permDialogVisible.value = false
   } catch (error) {
@@ -218,7 +242,7 @@ async function handleDelete(row) {
 
 onMounted(() => {
   loadRoleList()
-  loadMenuTree()
+  loadPermTree()
 })
 </script>
 

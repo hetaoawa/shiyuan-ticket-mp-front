@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>用户管理</span>
-          <el-button type="primary" @click="showAddDialog">
+          <el-button type="primary" @click="showAddDialog" v-hasPermi="['user:create']">
             <el-icon><Plus /></el-icon>
             新增用户
           </el-button>
@@ -48,6 +48,11 @@
             {{ row.externalUserId || '-' }}
           </template>
         </el-table-column>
+        <el-table-column prop="tenantId" label="租户ID" width="100">
+          <template #default="{ row }">
+            {{ row.tenantId ?? '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="80" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
@@ -58,9 +63,9 @@
         <el-table-column prop="createdAt" label="创建时间" width="170" />
         <el-table-column label="操作" fixed="right" width="200">
           <template #default="{ row }">
-            <el-button type="primary" link @click="showEditDialog(row)">编辑</el-button>
-            <el-button type="primary" link @click="showResetPwdDialog(row)">重置密码</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+            <el-button type="primary" link @click="showEditDialog(row)" v-hasPermi="['user:update']">编辑</el-button>
+            <el-button type="primary" link @click="showResetPwdDialog(row)" v-hasPermi="['user:update']">重置密码</el-button>
+            <el-button type="danger" link @click="handleDelete(row)" v-hasPermi="['user:delete']">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -88,13 +93,23 @@
           <el-input v-model="userForm.nickname" placeholder="请输入昵称" />
         </el-form-item>
         <el-form-item label="手机号" prop="phone">
-          <el-input v-model="userForm.phone" placeholder="请输入手机号" />
+          <el-input v-model="userForm.phone" placeholder="请输入手机号" clearable />
         </el-form-item>
         <el-form-item label="邮箱" prop="email">
-          <el-input v-model="userForm.email" placeholder="请输入邮箱" />
+          <el-input v-model="userForm.email" placeholder="请输入邮箱" clearable />
         </el-form-item>
         <el-form-item label="外部用户ID" prop="externalUserId">
-          <el-input v-model="userForm.externalUserId" placeholder="外部系统用户ID（选填）" />
+          <el-input v-model="userForm.externalUserId" placeholder="外部系统用户ID（选填）" clearable />
+        </el-form-item>
+        <el-form-item label="租户">
+          <el-select v-model="userForm.tenantId" placeholder="请选择租户" clearable filterable allow-create>
+            <el-option
+              v-for="t in tenantOptions"
+              :key="t.id"
+              :label="t.name"
+              :value="t.id"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item v-if="!isEdit" label="密码" prop="password">
           <el-input v-model="userForm.password" type="password" placeholder="请输入密码" />
@@ -143,12 +158,14 @@ import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getUserList, createUser, updateUser, deleteUser, resetPassword, getUserRoles, assignRoles } from '@/api/admin/user'
 import { getRoleList } from '@/api/admin/role'
+import { getTenantOptions } from '@/api/admin/tenant'
 
 const loading = ref(false)
 const submitLoading = ref(false)
 const userList = ref([])
 const total = ref(0)
 const roleOptions = ref([])
+const tenantOptions = ref([])
 
 const searchForm = reactive({
   username: '',
@@ -171,6 +188,7 @@ const userForm = reactive({
   externalUserId: '',
   password: '',
   status: 1,
+  tenantId: null,
   roleIds: []
 })
 
@@ -216,6 +234,16 @@ async function loadRoleOptions() {
   }
 }
 
+// 加载租户选项
+async function loadTenantOptions() {
+  try {
+    const res = await getTenantOptions()
+    tenantOptions.value = res.data || []
+  } catch (error) {
+    console.error('加载租户列表失败', error)
+  }
+}
+
 function handleSearch() {
   searchForm.pageNum = 1
   loadUserList()
@@ -256,6 +284,7 @@ async function showEditDialog(row) {
     email: row.email,
     externalUserId: row.externalUserId || '',
     status: row.status,
+    tenantId: row.tenantId ?? null,
     roleIds: []
   })
   
@@ -286,6 +315,7 @@ function resetForm() {
     externalUserId: '',
     password: '',
     status: 1,
+    tenantId: null,
     roleIds: []
   })
 }
@@ -297,27 +327,28 @@ async function handleSubmit() {
   submitLoading.value = true
   try {
     if (isEdit.value) {
-      await updateUser(userForm.id, {
+      const updatePayload = {
         nickname: userForm.nickname,
-        phone: userForm.phone,
-        email: userForm.email,
+        phone: userForm.phone || null,
+        email: userForm.email || null,
         externalUserId: userForm.externalUserId || null,
         status: userForm.status,
-      })
-      // 分配角色
-      if (userForm.roleIds.length > 0) {
-        await assignRoles(userForm.id, { role_ids: userForm.roleIds })
+        tenantId: userForm.tenantId,
       }
+      await updateUser(userForm.id, updatePayload)
+      // 分配角色（始终调用，空列表表示清除所有角色）
+      await assignRoles(userForm.id, { role_ids: userForm.roleIds })
       ElMessage.success('更新成功')
     } else {
       await createUser({
         username: userForm.username,
         nickname: userForm.nickname,
-        phone: userForm.phone,
-        email: userForm.email,
+        phone: userForm.phone || null,
+        email: userForm.email || null,
         externalUserId: userForm.externalUserId || null,
         password: userForm.password,
         status: userForm.status,
+        tenantId: userForm.tenantId,
         roleIds: userForm.roleIds,
       })
       ElMessage.success('创建成功')
@@ -362,6 +393,7 @@ async function handleDelete(row) {
 onMounted(() => {
   loadUserList()
   loadRoleOptions()
+  loadTenantOptions()
 })
 </script>
 

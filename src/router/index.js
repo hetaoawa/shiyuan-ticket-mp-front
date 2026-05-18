@@ -98,7 +98,7 @@ const router = createRouter({
 const whiteList = ['/login']
 
 router.beforeEach(async (to, from, next) => {
-  document.title = to.meta.title ? `${to.meta.title} - 云仓工单系统` : '云仓工单系统'
+  document.title = to.meta.title ? `${to.meta.title} - 中台工单流转系统` : '中台工单流转系统'
 
   const userStore = useUserStore()
 
