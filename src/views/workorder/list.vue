@@ -87,6 +87,15 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="处理人" width="130" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.assigneeName">{{ row.assigneeName }}</span>
+            <span v-else-if="row.assigneeRoleName">{{ row.assigneeRoleName }}</span>
+            <span v-else-if="row.assigneeId">用户 {{ row.assigneeId }}</span>
+            <span v-else-if="row.assigneeRole">{{ row.assigneeRole }}</span>
+            <span v-else style="color: #909399;">未派发</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
@@ -213,7 +222,7 @@
     </el-dialog>
 
     <!-- 批量派发弹窗 -->
-    <el-dialog v-model="batchAssignVisible" title="批量派发工单" width="450px">
+    <el-dialog v-model="batchAssignVisible" title="批量派发工单" width="480px">
       <el-alert
         :title="`已选择 ${selectedRows.length} 个工单`"
         type="info"
@@ -222,13 +231,29 @@
         style="margin-bottom: 16px;"
       />
       <el-form :model="batchAssignForm" label-width="80px">
-        <el-form-item label="处理人" required>
+        <el-form-item label="派发方式">
+          <el-radio-group v-model="batchAssignForm.assignType" @change="handleBatchAssignTypeChange">
+            <el-radio value="user">按用户</el-radio>
+            <el-radio value="role">按角色</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="batchAssignForm.assignType === 'user'" label="处理人" required>
           <el-select v-model="batchAssignForm.assigneeId" placeholder="请选择处理人" filterable>
             <el-option
               v-for="user in userList"
               :key="user.id"
               :label="`${user.nickname || user.username} (${user.username})`"
               :value="user.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="batchAssignForm.assignType === 'role'" label="角色" required>
+          <el-select v-model="batchAssignForm.assigneeRoleCode" placeholder="请选择角色" filterable>
+            <el-option
+              v-for="role in warehouseRoleOptions"
+              :key="role.roleCode"
+              :label="role.roleName"
+              :value="role.roleCode"
             />
           </el-select>
         </el-form-item>
@@ -246,6 +271,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getWorkOrderList, createWorkOrder, batchAssignWorkOrder, exportWorkOrders, aiParse } from '@/api/workorder'
 import { getSimpleUserList } from '@/api/admin/user'
+import { getRoleList } from '@/api/admin/role'
 import { ElMessage } from 'element-plus'
 import FileUpload from '@/components/FileUpload.vue'
 
@@ -257,8 +283,9 @@ const showCreateDialog = ref(false)
 const selectedRows = ref([])
 const batchAssignVisible = ref(false)
 const batchLoading = ref(false)
-const batchAssignForm = reactive({ assigneeId: '' })
+const batchAssignForm = reactive({ assignType: 'user', assigneeId: '', assigneeRoleCode: '' })
 const userList = ref([])
+const warehouseRoleOptions = ref([])
 
 // 创建工单相关
 const formRef = ref(null)
@@ -401,22 +428,39 @@ function handleSelectionChange(rows) {
 
 // 显示批量派发弹窗
 function showBatchAssignDialog() {
+  batchAssignForm.assignType = 'user'
   batchAssignForm.assigneeId = ''
+  batchAssignForm.assigneeRoleCode = ''
   batchAssignVisible.value = true
+}
+
+// 派发方式切换
+function handleBatchAssignTypeChange() {
+  batchAssignForm.assigneeId = ''
+  batchAssignForm.assigneeRoleCode = ''
 }
 
 // 批量派发
 async function handleBatchAssign() {
-  if (!batchAssignForm.assigneeId) {
-    ElMessage.warning('请输入处理人ID')
+  if (batchAssignForm.assignType === 'user' && !batchAssignForm.assigneeId) {
+    ElMessage.warning('请选择处理人')
+    return
+  }
+  if (batchAssignForm.assignType === 'role' && !batchAssignForm.assigneeRoleCode) {
+    ElMessage.warning('请选择角色')
     return
   }
   batchLoading.value = true
   try {
-    await batchAssignWorkOrder({
+    const data = {
       workOrderIds: selectedRows.value.map((r) => r.id),
-      assigneeId: batchAssignForm.assigneeId,
-    })
+    }
+    if (batchAssignForm.assignType === 'user') {
+      data.assigneeId = batchAssignForm.assigneeId
+    } else {
+      data.assigneeRoleCode = batchAssignForm.assigneeRoleCode
+    }
+    await batchAssignWorkOrder(data)
     ElMessage.success(`成功派发 ${selectedRows.value.length} 个工单`)
     batchAssignVisible.value = false
     loadData()
@@ -540,9 +584,21 @@ async function loadUserList() {
   }
 }
 
+// 加载云仓侧角色列表
+async function loadWarehouseRoles() {
+  try {
+    const res = await getRoleList()
+    const allRoles = res.data || []
+    warehouseRoleOptions.value = allRoles.filter(r => r.roleCode === 'WAREHOUSE_ADMIN')
+  } catch {
+    // 忽略角色列表加载错误
+  }
+}
+
 onMounted(() => {
   loadData()
   loadUserList()
+  loadWarehouseRoles()
 })
 </script>
 

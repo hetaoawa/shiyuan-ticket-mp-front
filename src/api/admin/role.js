@@ -59,3 +59,11 @@ export function assignPermissions(id, data) {
     data,
   })
 }
+
+// 获取全部权限列表
+export function getAllPermissions() {
+  return request({
+    url: '/admin/roles/permissions/all',
+    method: 'get',
+  })
+}

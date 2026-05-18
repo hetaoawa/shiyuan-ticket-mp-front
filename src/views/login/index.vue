@@ -1,57 +1,60 @@
 <template>
   <div class="login-container">
-    <el-card class="login-card">
-      <template #header>
-        <div class="login-header">
-          <h2>云仓工单系统</h2>
-          <p>柔性供应链管理平台</p>
-        </div>
-      </template>
-
-      <el-form
-        ref="loginFormRef"
-        :model="loginForm"
-        :rules="loginRules"
-        label-width="0"
-        size="large"
-      >
-        <el-form-item prop="username">
-          <el-input
-            v-model="loginForm.username"
-            placeholder="请输入用户名"
-            prefix-icon="User"
-          />
-        </el-form-item>
-
-        <el-form-item prop="password">
-          <el-input
-            v-model="loginForm.password"
-            type="password"
-            placeholder="请输入密码"
-            prefix-icon="Lock"
-            show-password
-            @keyup.enter="handleLogin"
-          />
-        </el-form-item>
-
-        <el-form-item>
-          <div class="remember-row">
-            <el-checkbox v-model="rememberPassword">记住密码</el-checkbox>
-          </div>
-        </el-form-item>
-
-        <el-form-item>
-          <el-button
-            type="primary"
-            :loading="loading"
-            class="login-btn"
-            @click="handleLogin"
+    <div class="login-panel">
+      <div class="login-left">
+        <img src="@/assets/project-logo.png" alt="Logo" class="login-logo" />
+        <h1 class="login-title">中台工单流转系统</h1>
+        <p class="login-subtitle">供应链工单流转管理平台</p>
+      </div>
+      <div class="login-right">
+        <div class="login-form-wrapper">
+          <h2 class="form-title">用户登录</h2>
+          <el-form
+            ref="loginFormRef"
+            :model="loginForm"
+            :rules="loginRules"
+            label-width="0"
+            size="large"
           >
-            登录
-          </el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+            <el-form-item prop="username">
+              <el-input
+                v-model="loginForm.username"
+                placeholder="请输入用户名"
+                prefix-icon="User"
+              />
+            </el-form-item>
+
+            <el-form-item prop="password">
+              <el-input
+                v-model="loginForm.password"
+                type="password"
+                placeholder="请输入密码"
+                prefix-icon="Lock"
+                show-password
+                @keyup.enter="handleLogin"
+              />
+            </el-form-item>
+
+            <el-form-item>
+              <div class="remember-row">
+                <el-checkbox v-model="rememberPassword">记住密码</el-checkbox>
+              </div>
+            </el-form-item>
+
+            <el-form-item>
+              <el-button
+                type="primary"
+                :loading="loading"
+                class="login-btn"
+                @click="handleLogin"
+              >
+                登 录
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -69,19 +72,16 @@ const loginFormRef = ref(null)
 const loading = ref(false)
 const rememberPassword = ref(false)
 
-// 登录表单
 const loginForm = reactive({
   username: '',
   password: '',
 })
 
-// 表单验证规则
 const loginRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
 
-// 加载保存的登录信息
 function loadSavedLogin() {
   const saved = localStorage.getItem('rememberedLogin')
   if (saved) {
@@ -96,7 +96,6 @@ function loadSavedLogin() {
   }
 }
 
-// 保存登录信息
 function saveLoginInfo() {
   if (rememberPassword.value) {
     localStorage.setItem('rememberedLogin', JSON.stringify({
@@ -108,7 +107,6 @@ function saveLoginInfo() {
   }
 }
 
-// 登录
 async function handleLogin() {
   const valid = await loginFormRef.value.validate().catch(() => false)
   if (!valid) return
@@ -119,7 +117,6 @@ async function handleLogin() {
     saveLoginInfo()
     ElMessage.success('登录成功')
 
-    // 跳转到之前的页面或首页
     const redirect = route.query.redirect || '/'
     router.push(redirect)
   } catch (error) {
@@ -140,28 +137,68 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-color: #f0f2f5;
 }
 
-.login-card {
-  width: 420px;
+.login-panel {
+  display: flex;
+  width: 820px;
+  min-height: 440px;
+  background: #fff;
   border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
 }
 
-.login-header {
-  text-align: center;
+.login-left {
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #409eff 0%, #337ecc 100%);
+  padding: 40px;
 }
 
-.login-header h2 {
+.login-logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+  object-fit: cover;
+  margin-bottom: 24px;
+}
+
+.login-title {
   margin: 0;
-  font-size: 24px;
-  color: #303133;
+  font-size: 26px;
+  font-weight: 700;
+  color: #fff;
 }
 
-.login-header p {
+.login-subtitle {
   margin: 8px 0 0;
   font-size: 14px;
-  color: #909399;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.login-right {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.login-form-wrapper {
+  width: 100%;
+  max-width: 340px;
+}
+
+.form-title {
+  margin: 0 0 32px;
+  font-size: 22px;
+  font-weight: 600;
+  color: #303133;
 }
 
 .login-btn {
