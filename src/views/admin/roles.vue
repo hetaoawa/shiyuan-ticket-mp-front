@@ -15,7 +15,7 @@
       <el-table :data="roleList" v-loading="loading" border>
         <el-table-column prop="id" label="角色ID" width="100" />
         <el-table-column prop="roleName" label="角色名称" width="150" />
-        <el-table-column prop="roleCode" label="权限字符" width="150" />
+        <el-table-column prop="roleCode" label="权限字符" width="160" />
         <el-table-column prop="remark" label="备注" />
         <el-table-column prop="createdAt" label="创建时间" width="170" />
         <el-table-column label="操作" fixed="right" width="200">

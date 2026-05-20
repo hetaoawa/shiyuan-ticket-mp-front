@@ -231,7 +231,7 @@ async function handleUpload(options) {
 
     ElMessage.success('上传成功')
   } catch (error) {
-    ElMessage.error('上传失败')
+    console.error('上传失败', error)
     options.onError(error)
   }
 }
@@ -284,7 +284,7 @@ async function uploadAll(bizId) {
     emit('upload-success', uploadedIds)
     ElMessage.success(`${uploadedIds.length} 个文件上传成功`)
   } catch (error) {
-    ElMessage.error('文件上传失败')
+    console.error('文件上传失败', error)
     throw error
   } finally {
     loading.value = false
@@ -315,7 +315,7 @@ async function handleDelete(file) {
     ElMessage.success('删除成功')
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除失败')
+      console.error('删除失败', error)
     }
   }
 }

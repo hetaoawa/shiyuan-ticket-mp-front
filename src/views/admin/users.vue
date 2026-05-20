@@ -216,7 +216,7 @@ async function loadUserList() {
     if (searchForm.status !== '' && searchForm.status !== null && searchForm.status !== undefined) params.status = searchForm.status
     const res = await getUserList(params)
     userList.value = res.data?.records || res.data || []
-    total.value = res.data?.total || 0
+    total.value = Number(res.data?.total) || 0
   } catch (error) {
     console.error('加载用户列表失败', error)
   } finally {
