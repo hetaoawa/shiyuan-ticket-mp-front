@@ -159,13 +159,7 @@ async function handleNlpParse() {
 
     ElMessage.success('智能识别完成，请检查并补充信息')
   } catch (error) {
-    if (error.response?.status === 429) {
-      ElMessage.error('请求过于频繁，请稍后再试（每分钟最多10次）')
-    } else if (error.response?.status === 400) {
-      ElMessage.error('不合法的输入')
-    } else {
-      ElMessage.error('解析失败，请手动填写')
-    }
+    console.error('智能解析失败', error)
   } finally {
     nlpLoading.value = false
   }
