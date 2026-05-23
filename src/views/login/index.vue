@@ -20,7 +20,7 @@
               <el-input
                 v-model="loginForm.username"
                 placeholder="请输入用户名"
-                prefix-icon="User"
+                :prefix-icon="User"
               />
             </el-form-item>
 
@@ -29,7 +29,7 @@
                 v-model="loginForm.password"
                 type="password"
                 placeholder="请输入密码"
-                prefix-icon="Lock"
+                :prefix-icon="Lock"
                 show-password
                 @keyup.enter="handleLogin"
               />
@@ -63,6 +63,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
+import { User, Lock } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
