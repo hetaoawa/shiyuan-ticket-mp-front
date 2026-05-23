@@ -45,7 +45,7 @@
             >
               强制驳回
             </el-button>
-            <el-button icon="ArrowLeft" @click="handleBack">返回</el-button>
+            <el-button :icon="ArrowLeft" @click="handleBack">返回</el-button>
           </div>
         </div>
       </template>
@@ -371,7 +371,7 @@ import { getComments, addComment } from '@/api/comment'
 import { getSimpleUserList } from '@/api/admin/user'
 import { getRoleList } from '@/api/admin/role'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CopyDocument } from '@element-plus/icons-vue'
+import { CopyDocument, ArrowLeft } from '@element-plus/icons-vue'
 import FileUpload from '@/components/FileUpload.vue'
 
 const route = useRoute()

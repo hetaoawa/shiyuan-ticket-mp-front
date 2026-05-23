@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>创建工单</span>
-          <el-button icon="ArrowLeft" @click="handleBack">返回</el-button>
+          <el-button :icon="ArrowLeft" @click="handleBack">返回</el-button>
         </div>
       </template>
 
@@ -109,6 +109,7 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { createWorkOrder, aiParse } from '@/api/workorder'
 import { ElMessage } from 'element-plus'
+import { ArrowLeft } from '@element-plus/icons-vue'
 import FileUpload from '@/components/FileUpload.vue'
 
 const router = useRouter()

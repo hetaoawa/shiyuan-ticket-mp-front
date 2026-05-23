@@ -71,7 +71,7 @@
         <div class="header-right">
           <el-dropdown @command="handleCommand">
             <span class="user-info">
-              <el-avatar :size="32" icon="UserFilled" />
+              <el-avatar :size="32" :icon="UserFilled" />
               <span class="username">{{ userStore.nickname || userStore.username }}</span>
             </span>
             <template #dropdown>
@@ -103,7 +103,10 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessageBox } from 'element-plus'
-import * as ElementPlusIcons from '@element-plus/icons-vue'
+import {
+  Fold, Expand, Document, List, Plus, Setting, User, Lock,
+  Menu, Warning, Monitor, UserFilled, Search
+} from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -127,19 +130,19 @@ const breadcrumbs = computed(() => {
 })
 
 // 图标映射
-const iconMap = {
-  'file-text': 'Document',
-  'list': 'List',
-  'plus': 'Plus',
-  'setting': 'Setting',
-  'user': 'User',
-  'lock': 'Lock',
-  'menu': 'Menu',
-  'document': 'Document',
-  'warning': 'Warning',
-  'monitor': 'Monitor',
-  'team': 'UserFilled',
-  'file-search': 'Search'
+const iconComponentMap = {
+  'file-text': Document,
+  'list': List,
+  'plus': Plus,
+  'setting': Setting,
+  'user': User,
+  'lock': Lock,
+  'menu': Menu,
+  'document': Document,
+  'warning': Warning,
+  'monitor': Monitor,
+  'team': UserFilled,
+  'file-search': Search
 }
 
 // 静态回退菜单（API 无数据时使用）
@@ -207,7 +210,7 @@ const menuRoutes = computed(() => {
 
 // 获取图标组件
 function getIconComponent(iconName) {
-  return iconMap[iconName] || iconName || 'Menu'
+  return iconComponentMap[iconName] || Menu
 }
 
 // 切换折叠

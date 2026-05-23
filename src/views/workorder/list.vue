@@ -41,7 +41,7 @@
             <el-button
               v-hasPermi="['workorder:export']"
               type="success"
-              icon="Download"
+              :icon="Download"
               @click="handleExport"
             >
               导出 CSV
@@ -49,7 +49,7 @@
             <el-button
               v-hasPermi="['workorder:assign']"
               type="warning"
-              icon="Promotion"
+              :icon="Promotion"
               :disabled="selectedRows.length === 0"
               @click="showBatchAssignDialog"
             >
@@ -58,7 +58,7 @@
             <el-button
               v-hasPermi="['workorder:create']"
               type="primary"
-              icon="Plus"
+              :icon="Plus"
               @click="showCreateDialog = true"
             >
               创建工单
@@ -273,6 +273,7 @@ import { getWorkOrderList, createWorkOrder, batchAssignWorkOrder, exportWorkOrde
 import { getSimpleUserList } from '@/api/admin/user'
 import { getRoleList } from '@/api/admin/role'
 import { ElMessage } from 'element-plus'
+import { Download, Promotion, Plus } from '@element-plus/icons-vue'
 import FileUpload from '@/components/FileUpload.vue'
 
 const router = useRouter()
