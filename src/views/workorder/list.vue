@@ -126,16 +126,16 @@
       :close-on-click-modal="false"
       @closed="handleDialogClosed"
     >
-      <!-- NLP 智能解析区域 -->
+      <!-- 智能解析区域 -->
       <el-card class="nlp-section" shadow="never">
         <template #header>
-          <span>NLP 智能解析</span>
+          <span>智能解析</span>
         </template>
         <el-input
           v-model="nlpText"
           type="textarea"
-          :rows="3"
-          placeholder="请粘贴杂乱的物流诉求，例如：&#10;SF12345 改地址 广州天河区&#10;YTO98765 破损 外包装破裂"
+          :rows="4"
+          placeholder="建议按照示例输入:运单号+售后类型（如退回、催件）格式填写。&#10;示例：YT7621300222910 退回&#10;更址：请按运单号+更址+新地址格式填写。示例：YT7621300222910 更址 小李18200000000上海市青浦区盈港东路6679号"
         />
         <el-button
           type="primary"
