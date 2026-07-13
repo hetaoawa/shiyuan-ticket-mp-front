@@ -111,14 +111,25 @@ import { createWorkOrder, aiParse } from '@/api/workorder'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import FileUpload from '@/components/FileUpload.vue'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 const formRef = ref(null)
 const fileUploadRef = ref(null)
 const nlpText = ref('')
 const nlpLoading = ref(false)
 const submitLoading = ref(false)
+const createdWorkOrderId = ref(null)
+
+function acquireWorkOrderOperation() {
+  const releaseTenantContext = userStore.acquireTenantContextOperation()
+  if (!releaseTenantContext) {
+    ElMessage.warning('租户切换正在进行，请稍后重试')
+  }
+  return releaseTenantContext
+}
 
 // 工单表单
 const form = reactive({
@@ -183,6 +194,14 @@ async function handleSubmit() {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
 
+  if (createdWorkOrderId.value) {
+    ElMessage.warning('工单已创建，请在工单详情中继续上传附件')
+    await router.push(`/workorder/detail/${createdWorkOrderId.value}`)
+    return
+  }
+
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return
   submitLoading.value = true
   try {
     const data = {
@@ -198,16 +217,25 @@ async function handleSubmit() {
     const res = await createWorkOrder(data)
 
     const workOrderId = res.data?.id
+    createdWorkOrderId.value = workOrderId || null
     if (fileUploadRef.value && workOrderId) {
-      await fileUploadRef.value.uploadAll(workOrderId)
+      try {
+        await fileUploadRef.value.uploadAll(workOrderId)
+      } catch (error) {
+        console.error('工单已创建但附件上传失败', error)
+        ElMessage.warning(`工单已创建（ID：${workOrderId}），但附件上传失败，请在详情中重新上传`)
+        await router.push(`/workorder/detail/${workOrderId}`)
+        return
+      }
     }
 
     ElMessage.success('工单创建成功')
-    router.push('/workorder/list')
+    await router.push('/workorder/list')
   } catch (error) {
-    // 错误已在 request.js 中处理
+    console.error('创建工单失败', error)
   } finally {
     submitLoading.value = false
+    releaseTenantContext()
   }
 }
 

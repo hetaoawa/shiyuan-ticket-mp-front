@@ -35,6 +35,22 @@ export function getWorkOrderDetail(id) {
   })
 }
 
+// 当前租户内可派发的用户
+export function getAssignmentUserOptions() {
+  return request({
+    url: '/workorders/assignment-options/users',
+    method: 'get',
+  })
+}
+
+// 当前租户内可派发的角色
+export function getAssignmentRoleOptions() {
+  return request({
+    url: '/workorders/assignment-options/roles',
+    method: 'get',
+  })
+}
+
 // 派发工单（支持按用户或按角色派发）
 export function assignWorkOrder(id, params) {
   return request({

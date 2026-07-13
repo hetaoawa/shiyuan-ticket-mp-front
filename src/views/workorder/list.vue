@@ -272,17 +272,26 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { formatTenantLabel } from '@/utils/tenant'
 import { useRouter } from 'vue-router'
-import { getWorkOrderList, createWorkOrder, batchAssignWorkOrder, exportWorkOrders, aiParse } from '@/api/workorder'
-import { getSimpleUserList } from '@/api/admin/user'
-import { getRoleList } from '@/api/admin/role'
+import {
+  getWorkOrderList,
+  createWorkOrder,
+  batchAssignWorkOrder,
+  exportWorkOrders,
+  aiParse,
+  getAssignmentUserOptions,
+  getAssignmentRoleOptions,
+} from '@/api/workorder'
+import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 import { Download, Promotion, Plus } from '@element-plus/icons-vue'
 import FileUpload from '@/components/FileUpload.vue'
 
 const router = useRouter()
+const userStore = useUserStore()
+const canAssignWorkOrder = computed(() => userStore.permissions.includes('workorder:assign'))
 
 const loading = ref(false)
 const tableData = ref([])
@@ -300,6 +309,15 @@ const fileUploadRef = ref(null)
 const nlpText = ref('')
 const nlpLoading = ref(false)
 const submitLoading = ref(false)
+const createdWorkOrderId = ref(null)
+
+function acquireWorkOrderOperation() {
+  const releaseTenantContext = userStore.acquireTenantContextOperation()
+  if (!releaseTenantContext) {
+    ElMessage.warning('租户切换正在进行，请稍后重试')
+  }
+  return releaseTenantContext
+}
 
 const form = reactive({
   type: '',
@@ -434,7 +452,8 @@ function handleSelectionChange(rows) {
 }
 
 // 显示批量派发弹窗
-function showBatchAssignDialog() {
+async function showBatchAssignDialog() {
+  if (!canAssignWorkOrder.value || !await loadAssignmentOptions()) return
   batchAssignForm.assignType = 'user'
   batchAssignForm.assigneeId = ''
   batchAssignForm.assigneeRoleCode = ''
@@ -457,6 +476,8 @@ async function handleBatchAssign() {
     ElMessage.warning('请选择角色')
     return
   }
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return
   batchLoading.value = true
   try {
     const data = {
@@ -470,11 +491,12 @@ async function handleBatchAssign() {
     await batchAssignWorkOrder(data)
     ElMessage.success(`成功派发 ${selectedRows.value.length} 个工单`)
     batchAssignVisible.value = false
-    loadData()
+    await loadData()
   } catch (error) {
-    // 错误已在 request.js 中处理
+    console.error('批量派发工单失败', error)
   } finally {
     batchLoading.value = false
+    releaseTenantContext()
   }
 }
 
@@ -540,6 +562,14 @@ async function handleSubmit() {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
 
+  if (createdWorkOrderId.value) {
+    ElMessage.warning('工单已创建，请在工单详情中继续上传附件')
+    await router.push(`/workorder/detail/${createdWorkOrderId.value}`)
+    return
+  }
+
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return
   submitLoading.value = true
   try {
     const data = {
@@ -555,17 +585,27 @@ async function handleSubmit() {
     const res = await createWorkOrder(data)
 
     const workOrderId = res.data?.id
+    createdWorkOrderId.value = workOrderId || null
     if (fileUploadRef.value && workOrderId) {
-      await fileUploadRef.value.uploadAll(workOrderId)
+      try {
+        await fileUploadRef.value.uploadAll(workOrderId)
+      } catch (error) {
+        console.error('工单已创建但附件上传失败', error)
+        ElMessage.warning(`工单已创建（ID：${workOrderId}），但附件上传失败，请在详情中重新上传`)
+        await loadData()
+        await router.push(`/workorder/detail/${workOrderId}`)
+        return
+      }
     }
 
     ElMessage.success('工单创建成功')
     showCreateDialog.value = false
-    loadData()
+    await loadData()
   } catch (error) {
-    // 错误已在 request.js 中处理
+    console.error('创建工单失败', error)
   } finally {
     submitLoading.value = false
+    releaseTenantContext()
   }
 }
 
@@ -573,33 +613,37 @@ async function handleSubmit() {
 function handleDialogClosed() {
   formRef.value?.resetFields()
   nlpText.value = ''
+  createdWorkOrderId.value = null
 }
 
-// 加载用户列表
-async function loadUserList() {
+// 加载当前租户内的派发候选项
+async function loadAssignmentOptions() {
+  if (!canAssignWorkOrder.value) return false
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return false
   try {
-    const res = await getSimpleUserList()
-    userList.value = res.data || []
-  } catch {
-    // 忽略用户列表加载错误
-  }
-}
-
-// 加载云仓侧角色列表
-async function loadWarehouseRoles() {
-  try {
-    const res = await getRoleList()
-    const allRoles = res.data || []
-    warehouseRoleOptions.value = allRoles.filter(r => r.roleCode === 'WAREHOUSE_ADMIN')
-  } catch {
-    // 忽略角色列表加载错误
+    const [userResult, roleResult] = await Promise.allSettled([
+      getAssignmentUserOptions(),
+      getAssignmentRoleOptions(),
+    ])
+    const failedResult = [userResult, roleResult].find((result) => result.status === 'rejected')
+    if (failedResult) throw failedResult.reason
+    const userResponse = userResult.value
+    const roleResponse = roleResult.value
+    userList.value = userResponse.data || []
+    warehouseRoleOptions.value = (roleResponse.data || [])
+      .filter((role) => role.roleCode === 'WAREHOUSE_ADMIN')
+    return true
+  } catch (error) {
+    console.error('加载派发候选项失败', error)
+    return false
+  } finally {
+    releaseTenantContext()
   }
 }
 
 onMounted(() => {
   loadData()
-  loadUserList()
-  loadWarehouseRoles()
 })
 </script>
 

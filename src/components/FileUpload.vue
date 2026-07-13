@@ -59,6 +59,9 @@ import { ref, watch, onMounted } from 'vue'
 import { Plus, ArrowLeft, ArrowRight, Document, Delete } from '@element-plus/icons-vue'
 import { getPresignUrl, confirmUpload, getDownloadUrl, getFilesByBiz, deleteFile } from '@/api/file'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useUserStore } from '@/stores/user'
+
+const userStore = useUserStore()
 
 const props = defineProps({
   modelValue: {
@@ -96,6 +99,14 @@ const previewList = ref([])
 const previewIndex = ref(0)
 const loading = ref(false)
 const pendingFiles = ref([])
+
+function acquireFileOperation() {
+  const releaseTenantContext = userStore.acquireTenantContextOperation()
+  if (!releaseTenantContext) {
+    ElMessage.warning('租户切换正在进行，请稍后重试')
+  }
+  return releaseTenantContext
+}
 
 onMounted(() => {
   if (props.bizId) {
@@ -198,6 +209,11 @@ async function handleUpload(options) {
     return
   }
 
+  const releaseTenantContext = acquireFileOperation()
+  if (!releaseTenantContext) {
+    options.onError?.(new Error('租户切换正在进行，请稍后重试'))
+    return
+  }
   try {
     const presignRes = await getPresignUrl({
       originalName: file.name,
@@ -209,11 +225,14 @@ async function handleUpload(options) {
 
     const { fileId, uploadUrl } = presignRes.data
 
-    await fetch(uploadUrl, {
+    const uploadResponse = await fetch(uploadUrl, {
       method: 'PUT',
       body: file,
       headers: { 'Content-Type': file.type }
     })
+    if (!uploadResponse.ok) {
+      throw new Error(`对象存储上传失败（HTTP ${uploadResponse.status}）`)
+    }
 
     await confirmUpload(fileId)
 
@@ -232,7 +251,9 @@ async function handleUpload(options) {
     ElMessage.success('上传成功')
   } catch (error) {
     console.error('上传失败', error)
-    options.onError(error)
+    options.onError?.(error)
+  } finally {
+    releaseTenantContext()
   }
 }
 
@@ -255,11 +276,14 @@ async function uploadAll(bizId) {
 
       const { fileId, uploadUrl } = presignRes.data
 
-      await fetch(uploadUrl, {
+      const uploadResponse = await fetch(uploadUrl, {
         method: 'PUT',
         body: file,
         headers: { 'Content-Type': file.type }
       })
+      if (!uploadResponse.ok) {
+        throw new Error(`对象存储上传失败（HTTP ${uploadResponse.status}）`)
+      }
 
       await confirmUpload(fileId)
 
@@ -301,10 +325,21 @@ async function handleDelete(file) {
       type: 'warning',
     })
 
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('确认删除失败', error)
+    }
+    return
+  }
+
+  let releaseTenantContext = null
+  try {
     if (file.pending) {
       pendingFiles.value = pendingFiles.value.filter(f => f.name !== file.name)
       if (file.url) URL.revokeObjectURL(file.url)
     } else if (file.fileId != null) {
+      releaseTenantContext = acquireFileOperation()
+      if (!releaseTenantContext) return
       await deleteFile(file.fileId)
     }
 
@@ -314,9 +349,9 @@ async function handleDelete(file) {
 
     ElMessage.success('删除成功')
   } catch (error) {
-    if (error !== 'cancel') {
-      console.error('删除失败', error)
-    }
+    console.error('删除失败', error)
+  } finally {
+    releaseTenantContext?.()
   }
 }
 

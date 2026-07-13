@@ -155,23 +155,25 @@
           </div>
 
           <!-- 处理轨迹 -->
-          <h4>处理轨迹</h4>
-          <el-timeline>
-            <el-timeline-item
-              v-for="log in auditLogs"
-              :key="log.id"
-              :timestamp="log.createdAt"
-              placement="top"
-            >
-              <el-card shadow="never">
-                <p class="log-action">{{ getActionLabel(log.action) }}</p>
-                <p class="log-detail" v-if="log.detail">{{ formatDetail(log.detail) }}</p>
-              </el-card>
-            </el-timeline-item>
-            <el-timeline-item v-if="auditLogs.length === 0" timestamp="暂无记录">
-              <p>暂无处理轨迹</p>
-            </el-timeline-item>
-          </el-timeline>
+          <template v-if="canViewAudit">
+            <h4>处理轨迹</h4>
+            <el-timeline>
+              <el-timeline-item
+                v-for="log in auditLogs"
+                :key="log.id"
+                :timestamp="log.createdAt"
+                placement="top"
+              >
+                <el-card shadow="never">
+                  <p class="log-action">{{ getActionLabel(log.action) }}</p>
+                  <p class="log-detail" v-if="log.detail">{{ formatDetail(log.detail) }}</p>
+                </el-card>
+              </el-timeline-item>
+              <el-timeline-item v-if="auditLogs.length === 0" timestamp="暂无记录">
+                <p>暂无处理轨迹</p>
+              </el-timeline-item>
+            </el-timeline>
+          </template>
         </el-col>
       </el-row>
 
@@ -365,21 +367,32 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getWorkOrderDetail, assignWorkOrder, closeWorkOrder, rejectWorkOrder, resubmitWorkOrder, forceRejectWorkOrder } from '@/api/workorder'
+import {
+  getWorkOrderDetail,
+  assignWorkOrder,
+  closeWorkOrder,
+  rejectWorkOrder,
+  resubmitWorkOrder,
+  forceRejectWorkOrder,
+  getAssignmentUserOptions,
+  getAssignmentRoleOptions,
+} from '@/api/workorder'
 import { getAuditLogs } from '@/api/audit'
 import { trackedExpress, traceExpress, getExpressCompanies } from '@/api/express'
 import { getComments, addComment } from '@/api/comment'
-import { getSimpleUserList } from '@/api/admin/user'
-import { getRoleList } from '@/api/admin/role'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { CopyDocument, ArrowLeft } from '@element-plus/icons-vue'
 import FileUpload from '@/components/FileUpload.vue'
 import { formatTenantLabel } from '@/utils/tenant'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
+const canAssignWorkOrder = computed(() => userStore.permissions.includes('workorder:assign'))
+const canViewAudit = computed(() => userStore.permissions.includes('audit:view'))
 
 const loading = ref(false)
 const actionLoading = ref(false)
@@ -395,6 +408,14 @@ const commentText = ref('')
 const commentLoading = ref(false)
 const userList = ref([])
 const warehouseRoleOptions = ref([])
+
+function acquireWorkOrderOperation() {
+  const releaseTenantContext = userStore.acquireTenantContextOperation()
+  if (!releaseTenantContext) {
+    ElMessage.warning('租户切换正在进行，请稍后重试')
+  }
+  return releaseTenantContext
+}
 
 // 弹窗控制
 const assignDialogVisible = ref(false)
@@ -512,6 +533,8 @@ async function handleCopy(text) {
 // 强制刷新物流轨迹
 async function handleForceTraceExpress() {
   if (!detail.value.trackingNo) return
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return
   expressForceLoading.value = true
   try {
     const res = await traceExpress({ trackingNo: detail.value.trackingNo })
@@ -520,13 +543,13 @@ async function handleForceTraceExpress() {
     const msg = error.response?.data?.message
     if (msg) {
       if (msg.includes('手机号')) {
-        showExpressQueryDialog()
-      } else {
-        ElMessage.warning(msg)
+        await showExpressQueryDialog()
       }
     }
+    console.error('强制刷新物流轨迹失败', error)
   } finally {
     expressForceLoading.value = false
+    releaseTenantContext()
   }
 }
 
@@ -546,6 +569,8 @@ async function showExpressQueryDialog() {
 // 物流查询（弹窗确认后）
 async function handleExpressQuery() {
   if (!detail.value.trackingNo) return
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return
   expressLoading.value = true
   try {
     const params = { trackingNo: detail.value.trackingNo }
@@ -555,12 +580,10 @@ async function handleExpressQuery() {
     expressData.value = res.data || null
     expressQueryVisible.value = false
   } catch (error) {
-    const msg = error.response?.data?.message
-    if (msg) {
-      ElMessage.warning(msg)
-    }
+    console.error('查询物流轨迹失败', error)
   } finally {
     expressLoading.value = false
+    releaseTenantContext()
   }
 }
 
@@ -573,8 +596,12 @@ async function loadDetail() {
   try {
     const res = await getWorkOrderDetail(id)
     detail.value = res.data || {}
-    // 加载审计日志
-    await loadAuditLogs(id)
+    // 审计轨迹只对具备权限的用户可见
+    if (canViewAudit.value) {
+      await loadAuditLogs(id)
+    } else {
+      auditLogs.value = []
+    }
     // 加载评论
     await loadComments()
     // 自动加载物流信息
@@ -627,24 +654,29 @@ async function loadComments() {
   }
 }
 
-// 加载用户列表
-async function loadUserList() {
+// 加载当前租户内的派发候选项
+async function loadAssignmentOptions() {
+  if (!canAssignWorkOrder.value) return false
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return false
   try {
-    const res = await getSimpleUserList()
-    userList.value = res.data || []
-  } catch {
-    // 忽略用户列表加载错误
-  }
-}
-
-// 加载云仓侧角色列表
-async function loadWarehouseRoles() {
-  try {
-    const res = await getRoleList()
-    const allRoles = res.data || []
-    warehouseRoleOptions.value = allRoles.filter(r => r.roleCode === 'WAREHOUSE_ADMIN')
-  } catch {
-    // 忽略角色列表加载错误
+    const [userResult, roleResult] = await Promise.allSettled([
+      getAssignmentUserOptions(),
+      getAssignmentRoleOptions(),
+    ])
+    const failedResult = [userResult, roleResult].find((result) => result.status === 'rejected')
+    if (failedResult) throw failedResult.reason
+    const userResponse = userResult.value
+    const roleResponse = roleResult.value
+    userList.value = userResponse.data || []
+    warehouseRoleOptions.value = (roleResponse.data || [])
+      .filter((role) => role.roleCode === 'WAREHOUSE_ADMIN')
+    return true
+  } catch (error) {
+    console.error('加载派发候选项失败', error)
+    return false
+  } finally {
+    releaseTenantContext()
   }
 }
 
@@ -654,6 +686,8 @@ async function handleAddComment() {
     ElMessage.warning('请输入评论内容')
     return
   }
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return
   commentLoading.value = true
   try {
     await addComment(detail.value.id, { content: commentText.value.trim() })
@@ -664,11 +698,13 @@ async function handleAddComment() {
     // 错误已在 request.js 中处理
   } finally {
     commentLoading.value = false
+    releaseTenantContext()
   }
 }
 
 // 显示派发弹窗
-function showAssignDialog() {
+async function showAssignDialog() {
+  if (!canAssignWorkOrder.value || !await loadAssignmentOptions()) return
   assignForm.assignType = 'user'
   assignForm.assigneeId = ''
   assignForm.assigneeRoleCode = ''
@@ -720,6 +756,8 @@ async function handleAssign() {
     ElMessage.warning('请选择角色')
     return
   }
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return
   actionLoading.value = true
   try {
     if (assignForm.assignType === 'user') {
@@ -729,11 +767,12 @@ async function handleAssign() {
     }
     ElMessage.success('派发成功')
     assignDialogVisible.value = false
-    loadDetail()
+    await loadDetail()
   } catch (error) {
-    // 错误已在 request.js 中处理
+    console.error('派发工单失败', error)
   } finally {
     actionLoading.value = false
+    releaseTenantContext()
   }
 }
 
@@ -743,16 +782,19 @@ async function handleClose() {
     ElMessage.warning('请输入处理结论')
     return
   }
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return
   actionLoading.value = true
   try {
     await closeWorkOrder(detail.value.id, closeForm.resolution)
     ElMessage.success('关闭成功')
     closeDialogVisible.value = false
-    loadDetail()
+    await loadDetail()
   } catch (error) {
-    // 错误已在 request.js 中处理
+    console.error('关闭工单失败', error)
   } finally {
     actionLoading.value = false
+    releaseTenantContext()
   }
 }
 
@@ -762,16 +804,19 @@ async function handleReject() {
     ElMessage.warning('请输入驳回原因')
     return
   }
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return
   actionLoading.value = true
   try {
     await rejectWorkOrder(detail.value.id, rejectForm.reason)
     ElMessage.success('驳回成功')
     rejectDialogVisible.value = false
-    loadDetail()
+    await loadDetail()
   } catch (error) {
-    // 错误已在 request.js 中处理
+    console.error('驳回工单失败', error)
   } finally {
     actionLoading.value = false
+    releaseTenantContext()
   }
 }
 
@@ -785,16 +830,19 @@ async function handleResubmit() {
   if (resubmitForm.type) data.type = resubmitForm.type
   if (resubmitForm.priority > 0) data.priority = resubmitForm.priority
 
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return
   actionLoading.value = true
   try {
     await resubmitWorkOrder(detail.value.id, data)
     ElMessage.success('重新提交成功')
     resubmitDialogVisible.value = false
-    loadDetail()
+    await loadDetail()
   } catch (error) {
-    // 错误已在 request.js 中处理
+    console.error('重新提交工单失败', error)
   } finally {
     actionLoading.value = false
+    releaseTenantContext()
   }
 }
 
@@ -804,16 +852,19 @@ async function handleForceReject() {
     ElMessage.warning('请输入驳回原因')
     return
   }
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return
   actionLoading.value = true
   try {
     await forceRejectWorkOrder(detail.value.id, forceRejectForm.reason)
     ElMessage.success('强制驳回成功')
     forceRejectDialogVisible.value = false
-    loadDetail()
+    await loadDetail()
   } catch (error) {
-    // 错误已在 request.js 中处理
+    console.error('强制驳回工单失败', error)
   } finally {
     actionLoading.value = false
+    releaseTenantContext()
   }
 }
 
@@ -832,8 +883,6 @@ async function loadExpressCompanies() {
 
 onMounted(() => {
   loadDetail()
-  loadUserList()
-  loadWarehouseRoles()
   loadExpressCompanies()
 })
 </script>
