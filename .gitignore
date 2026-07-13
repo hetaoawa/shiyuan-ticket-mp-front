@@ -35,5 +35,16 @@ coverage
 # Vitest
 __screenshots__/
 
+# Generated test artifacts and local E2E helpers
+/test-results/
+/playwright-report/
+/blob-report/
+/.playwright/
+/screenshots/
+/test-result*.json
+/integration-test-result*.json
+/test-upload*
+/e2e-*.cjs
+
 # Vite
 *.timestamp-*-*.mjs
