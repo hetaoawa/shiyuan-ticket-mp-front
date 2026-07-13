@@ -10,6 +10,12 @@ import {
   selectInitialTenant,
 } from '../src/utils/tenant-login.js'
 
+const loginViewUrl = new URL('../src/views/login/index.vue', import.meta.url)
+
+async function readLoginView() {
+  return readFile(loginViewUrl, 'utf8')
+}
+
 const options = [
   { tenantCode: 'platform', tenantName: '平台' },
   { tenantCode: 'acme', tenantName: 'Acme' },
@@ -180,4 +186,70 @@ test('auth API exports the public tenant-options request', async () => {
     functionMatch[1],
     /url:\s*['"]\/auth\/tenant-options['"][\s\S]*?method:\s*['"]get['"]/,
   )
+})
+
+test('login view renders a filterable tenant selector and stable test ids', async () => {
+  const source = await readLoginView()
+
+  assert.match(
+    source,
+    /<el-select\b(?=[\s\S]*?v-model="loginForm\.tenantCode")(?=[\s\S]*?filterable)(?=[\s\S]*?data-testid="tenant-select")[\s\S]*?<\/el-select>/,
+  )
+  assert.match(source, /<el-option\b[\s\S]*?:label="`\$\{option\.tenantName\} \(\$\{option\.tenantCode\}\)`"/)
+  assert.match(source, /tenantCode:\s*\[\{[^}]*trigger:\s*['"]change['"]/)
+  assert.match(source, /<el-input\b(?=[\s\S]*?v-model="loginForm\.username")(?=[\s\S]*?data-testid="username-input")[\s\S]*?>/)
+  assert.match(source, /<el-input\b(?=[\s\S]*?v-model="loginForm\.password")(?=[\s\S]*?data-testid="password-input")[\s\S]*?>/)
+  assert.match(source, /<el-button\b(?=[\s\S]*?data-testid="login-button")[\s\S]*?>/)
+})
+
+test('login view loads res.data tenant options with independent loading and failure states', async () => {
+  const source = await readLoginView()
+
+  assert.match(source, /import\s*\{\s*getLoginTenantOptions\s*\}\s*from\s*['"]@\/api\/auth['"]/)
+  assert.match(source, /const\s+tenantOptionsLoading\s*=\s*ref\(false\)/)
+  assert.match(source, /const\s+tenantOptionsError\s*=\s*ref\(['"]['"]\)/)
+  assert.match(source, /const\s+loginSubmitting\s*=\s*ref\(false\)/)
+  assert.match(source, /const\s+res\s*=\s*await\s+getLoginTenantOptions\(\)/)
+  assert.match(source, /tenantOptions\.value\s*=\s*Array\.isArray\(res\.data\)\s*\?\s*res\.data\s*:\s*\[\]/)
+  assert.match(source, /role="alert"/)
+  assert.match(source, /@click="loadTenantOptions"/)
+  assert.match(source, /tenantOptions\.length\s*===\s*0/)
+  assert.match(source, /:disabled="loginDisabled"/)
+  assert.match(source, /loginDisabled\s*=\s*computed\(\(\)\s*=>[\s\S]*tenantOptionsLoading\.value[\s\S]*tenantOptionsError\.value[\s\S]*tenantOptions\.value\.length\s*===\s*0[\s\S]*requestedTenantUnavailable\.value[\s\S]*loginSubmitting\.value/)
+})
+
+test('login view restores only remembered username and selects tenant after options arrive', async () => {
+  const source = await readLoginView()
+
+  assert.match(source, /const\s+rememberedTenantCode\s*=\s*ref\(['"]['"]\)/)
+  assert.match(source, /rememberedTenantCode\.value\s*=\s*rememberedLogin\.tenantCode/)
+  assert.match(source, /loginForm\.username\s*=\s*rememberedLogin\.username/)
+  assert.match(source, /loginForm\.password\s*=\s*['"]['"]/)
+  assert.match(source, /localStorage\.removeItem\(['"]rememberedLogin['"]\)/)
+  assert.doesNotMatch(source, /rememberedLogin\.password/)
+  assert.match(
+    source,
+    /selectInitialTenant\(\{[\s\S]*requestedTenant:\s*firstQueryString\(route\.query\.tenant\)[\s\S]*rememberedTenant:\s*rememberedTenantCode\.value[\s\S]*options:\s*tenantOptions\.value[\s\S]*\}\)/,
+  )
+})
+
+test('login view keeps unavailable explicit tenants visible and canonically syncs valid selections', async () => {
+  const source = await readLoginView()
+
+  assert.match(source, /const\s+requestedTenantUnavailable\s*=\s*ref\(false\)/)
+  assert.match(source, /v-if="requestedTenantUnavailable"[^>]*role="alert"/)
+  assert.match(source, /loginForm\.tenantCode\s*=\s*selection\.tenantCode/)
+  assert.match(source, /requestedTenantUnavailable\.value\s*=\s*selection\.requestedUnavailable/)
+  assert.match(source, /function\s+handleTenantChange\([^)]*\)\s*\{[\s\S]*requestedTenantUnavailable\.value\s*=\s*false[\s\S]*replaceLoginTenant/)
+  assert.match(source, /function\s+replaceLoginTenant\([^)]*\)\s*\{[\s\S]*router\.replace\(\{[\s\S]*path:\s*['"]\/login['"][\s\S]*query:\s*\{[\s\S]*\.\.\.route\.query[\s\S]*tenant:\s*tenantCode/)
+})
+
+test('login view follows normalized tenant query changes and uses replace after login', async () => {
+  const source = await readLoginView()
+
+  assert.match(source, /watch\(\s*\(\)\s*=>\s*firstQueryString\(route\.query\.tenant\)/)
+  assert.match(source, /route\.query\.tenant\s*===\s*tenantCode/)
+  assert.match(source, /resolvePostLoginTarget\(route\.query\.redirect,\s*loginForm\.tenantCode\)/)
+  assert.match(source, /router\.replace\(resolvePostLoginTarget\(route\.query\.redirect,\s*loginForm\.tenantCode\)\)/)
+  assert.doesNotMatch(source, /router\.push\(/)
 })
