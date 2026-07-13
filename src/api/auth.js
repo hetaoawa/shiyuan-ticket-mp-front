@@ -36,6 +36,13 @@ export function getMenuTree() {
   })
 }
 
+export function getLoginTenantOptions() {
+  return request({
+    url: '/auth/tenant-options',
+    method: 'get',
+  })
+}
+
 export function switchTenant(tenantId) {
   return request({
     url: '/auth/switch-tenant',
