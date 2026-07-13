@@ -16,6 +16,12 @@
             label-width="0"
             size="large"
           >
+            <el-form-item prop="tenantCode">
+              <el-input
+                v-model="loginForm.tenantCode"
+                placeholder="请输入租户编码（平台管理员填 platform）"
+              />
+            </el-form-item>
             <el-form-item prop="username">
               <el-input
                 v-model="loginForm.username"
@@ -37,7 +43,7 @@
 
             <el-form-item>
               <div class="remember-row">
-                <el-checkbox v-model="rememberPassword">记住密码</el-checkbox>
+                <el-checkbox v-model="rememberAccount">记住租户和账号</el-checkbox>
               </div>
             </el-form-item>
 
@@ -71,14 +77,16 @@ const userStore = useUserStore()
 
 const loginFormRef = ref(null)
 const loading = ref(false)
-const rememberPassword = ref(false)
+const rememberAccount = ref(false)
 
 const loginForm = reactive({
+  tenantCode: '',
   username: '',
   password: '',
 })
 
 const loginRules = {
+  tenantCode: [{ required: true, message: '请输入租户编码', trigger: 'blur' }],
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
@@ -87,10 +95,15 @@ function loadSavedLogin() {
   const saved = localStorage.getItem('rememberedLogin')
   if (saved) {
     try {
-      const { username, password } = JSON.parse(saved)
+      const { tenantCode, username } = JSON.parse(saved)
+      loginForm.tenantCode = tenantCode || ''
       loginForm.username = username || ''
-      loginForm.password = password || ''
-      rememberPassword.value = true
+      loginForm.password = ''
+      rememberAccount.value = true
+      localStorage.setItem('rememberedLogin', JSON.stringify({
+        tenantCode: loginForm.tenantCode,
+        username: loginForm.username,
+      }))
     } catch {
       // 解析失败则忽略
     }
@@ -98,10 +111,10 @@ function loadSavedLogin() {
 }
 
 function saveLoginInfo() {
-  if (rememberPassword.value) {
+  if (rememberAccount.value) {
     localStorage.setItem('rememberedLogin', JSON.stringify({
+      tenantCode: loginForm.tenantCode,
       username: loginForm.username,
-      password: loginForm.password,
     }))
   } else {
     localStorage.removeItem('rememberedLogin')

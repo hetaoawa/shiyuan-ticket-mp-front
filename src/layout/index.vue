@@ -69,6 +69,24 @@
           </el-breadcrumb>
         </div>
         <div class="header-right">
+          <div class="tenant-context">
+            <span class="tenant-label">当前租户</span>
+            <el-select
+              v-if="userStore.globalAdmin"
+              v-model="selectedTenantId"
+              placeholder="请选择业务租户"
+              class="tenant-select"
+              @change="handleTenantChange"
+            >
+              <el-option
+                v-for="tenant in userStore.availableTenants"
+                :key="tenant.id"
+                :label="tenant.tenantName"
+                :value="tenant.id"
+              />
+            </el-select>
+            <el-tag v-else type="info">{{ userStore.activeTenantName || '未选择' }}</el-tag>
+          </div>
           <el-dropdown @command="handleCommand">
             <span class="user-info">
               <el-avatar :size="32" :icon="UserFilled" />
@@ -76,6 +94,7 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item v-if="canManageTenantAdmins" command="tenants">租户管理</el-dropdown-item>
                 <el-dropdown-item command="profile">个人中心</el-dropdown-item>
                 <el-dropdown-item command="settings">系统设置</el-dropdown-item>
                 <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
@@ -102,7 +121,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Fold, Expand, Document, List, Plus, Setting, User, Lock,
   Menu, Warning, Monitor, UserFilled, Search
@@ -111,6 +130,13 @@ import {
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const selectedTenantId = ref(userStore.activeTenantId)
+const canManageTenantAdmins = computed(() => userStore.globalAdmin
+  || userStore.roles.includes('SYSTEM_ADMIN'))
+
+watch(() => userStore.activeTenantId, (value) => {
+  selectedTenantId.value = value
+}, { immediate: true })
 
 const watermarkContent = computed(() => [
   `用户ID：${String(userStore.userId || '')}`,
@@ -172,8 +198,11 @@ const fallbackMenus = [
 
 // 菜单数据（基于 API，修复重复路径；API 无数据时回退静态菜单）
 const menuRoutes = computed(() => {
+  if (userStore.globalAdmin && !userStore.activeTenantId) {
+    return [{ id: 'system-tenant', menuName: '租户管理', path: '/system/tenant', icon: 'setting' }]
+  }
   const menus = userStore.menuTree
-  if (!menus || menus.length === 0) return fallbackMenus
+  if (!menus || menus.length === 0) return withTenantAdminMenu(fallbackMenus)
   // 过滤 BUTTON 节点（按钮权限不应显示在侧边栏）
   const visibleMenus = menus
     .filter(parent => parent.menuType !== 'BUTTON')
@@ -191,7 +220,7 @@ const menuRoutes = computed(() => {
     })
   // 修复后端返回重复路径的 bug（如角色管理路径与用户管理相同）
   const usedPaths = new Set()
-  return visibleMenus.map(parent => {
+  const normalizedMenus = visibleMenus.map(parent => {
     if (!parent.children || parent.children.length === 0) return parent
     return {
       ...parent,
@@ -206,7 +235,19 @@ const menuRoutes = computed(() => {
       })
     }
   })
+  return withTenantAdminMenu(normalizedMenus)
 })
+
+function withTenantAdminMenu(menus) {
+  if (!canManageTenantAdmins.value) return menus
+  const alreadyPresent = menus.some(menu => menu.path === '/system/tenant'
+    || menu.children?.some(child => child.path === '/system/tenant'))
+  if (alreadyPresent) return menus
+  return [
+    { id: 'system-tenant', menuName: '租户管理', path: '/system/tenant', icon: 'setting' },
+    ...menus,
+  ]
+}
 
 // 获取图标组件
 function getIconComponent(iconName) {
@@ -220,7 +261,9 @@ function toggleCollapse() {
 
 // 处理下拉命令
 async function handleCommand(command) {
-  if (command === 'profile') {
+  if (command === 'tenants') {
+    router.push('/system/tenant')
+  } else if (command === 'profile') {
     router.push('/profile')
   } else if (command === 'settings') {
     router.push('/settings')
@@ -236,6 +279,20 @@ async function handleCommand(command) {
     } catch {
       // 取消操作
     }
+  }
+}
+
+async function handleTenantChange(tenantId) {
+  if (!tenantId || tenantId === userStore.activeTenantId) return
+  try {
+    await userStore.switchTenant(tenantId, {
+      onUnrecoverable: () => router.replace('/login'),
+    })
+    ElMessage.success(`已切换至 ${userStore.activeTenantName}`)
+    await router.replace({ path: '/workorder/list', query: { tenant: tenantId } })
+  } catch (error) {
+    selectedTenantId.value = userStore.activeTenantId
+    console.error('切换租户失败', error)
   }
 }
 </script>
@@ -305,6 +362,22 @@ async function handleCommand(command) {
 .header-right {
   display: flex;
   align-items: center;
+  gap: 18px;
+}
+
+.tenant-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tenant-label {
+  color: #606266;
+  font-size: 13px;
+}
+
+.tenant-select {
+  width: 190px;
 }
 
 .user-info {

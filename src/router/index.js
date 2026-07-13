@@ -57,6 +57,12 @@ const staticRoutes = [
         meta: { title: '系统设置' }
       },
       {
+        path: 'system/tenant',
+        name: 'AdminTenants',
+        component: () => import('@/views/admin/tenants.vue'),
+        meta: { title: '租户管理' }
+      },
+      {
         path: 'system/user',
         name: 'AdminUsers',
         component: () => import('@/views/admin/users.vue'),
@@ -115,13 +121,41 @@ router.beforeEach(async (to, from, next) => {
   if (!userStore.routerLoaded) {
     try {
       await userStore.getUserInfo()
+      if (userStore.globalAdmin) {
+        await userStore.loadAvailableTenants()
+      }
+      if (userStore.globalAdmin && !userStore.activeTenantId) {
+        userStore.setRouterLoaded(true)
+        next(to.path === '/system/tenant'
+          ? { ...to, replace: true }
+          : { path: '/system/tenant', replace: true })
+        return
+      }
       await userStore.getMenuTree()
       userStore.setRouterLoaded(true)
+      if (to.path === '/system/tenant'
+        && !userStore.globalAdmin
+        && !userStore.roles.includes('SYSTEM_ADMIN')) {
+        next({ path: '/', replace: true })
+        return
+      }
       next({ ...to, replace: true })
     } catch (error) {
       userStore.resetState()
       next(`/login?redirect=${to.path}`)
     }
+    return
+  }
+
+  if (userStore.globalAdmin && !userStore.activeTenantId && to.path !== '/system/tenant') {
+    next('/system/tenant')
+    return
+  }
+
+  if (!userStore.globalAdmin
+    && !userStore.roles.includes('SYSTEM_ADMIN')
+    && to.path === '/system/tenant') {
+    next('/')
     return
   }
 

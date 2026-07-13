@@ -36,6 +36,14 @@ export function getMenuTree() {
   })
 }
 
+export function switchTenant(tenantId) {
+  return request({
+    url: '/auth/switch-tenant',
+    method: 'post',
+    data: { tenantId },
+  })
+}
+
 // 修改当前用户密码
 export function changePassword(data) {
   return request({

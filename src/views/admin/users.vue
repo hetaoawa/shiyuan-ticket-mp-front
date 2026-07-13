@@ -151,7 +151,6 @@ import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getUserList, createUser, updateUser, deleteUser, resetPassword, getUserRoles, assignRoles } from '@/api/admin/user'
 import { getRoleList } from '@/api/admin/role'
-import { getTenantOptions } from '@/api/admin/tenant'
 import { formatTenantLabel } from '@/utils/tenant'
 import { useUserStore } from '@/stores/user'
 
@@ -161,7 +160,7 @@ const submitLoading = ref(false)
 const userList = ref([])
 const total = ref(0)
 const roleOptions = ref([])
-const tenantOptions = ref([])
+const RESERVED_ADMIN_ROLES = new Set(['SYSTEM_ADMIN', 'GLOBAL_SYSTEM_ADMIN'])
 
 const searchForm = reactive({
   username: '',
@@ -224,33 +223,23 @@ async function loadUserList() {
 async function loadRoleOptions() {
   try {
     const res = await getRoleList()
-    roleOptions.value = res.data || []
+    roleOptions.value = (res.data || []).filter(role => !RESERVED_ADMIN_ROLES.has(role.roleCode))
   } catch (error) {
     console.error('加载角色列表失败', error)
-  }
-}
-
-// 加载租户选项
-async function loadTenantOptions() {
-  try {
-    const res = await getTenantOptions()
-    tenantOptions.value = res.data || []
-  } catch (error) {
-    console.error('加载租户列表失败', error)
   }
 }
 
 function getTenantLabel(tenantId) {
   if (tenantId === null || tenantId === undefined) return '-'
   const id = String(tenantId)
-  const tenant = tenantOptions.value.find(item => String(item.id) === id)
-  return formatTenantLabel(tenant?.tenantName, id)
+  const name = id === userStore.activeTenantId ? userStore.activeTenantName : null
+  return formatTenantLabel(name, id)
 }
 
 function getActiveTenantId() {
-  return userStore.tenantId === null || userStore.tenantId === undefined
+  return userStore.activeTenantId === null || userStore.activeTenantId === undefined
     ? null
-    : String(userStore.tenantId)
+    : String(userStore.activeTenantId)
 }
 
 function handleSearch() {
@@ -302,7 +291,8 @@ async function showEditDialog(row) {
   // 获取用户角色
   try {
     const res = await getUserRoles(row.id)
-    userForm.roleIds = res.data || []
+    const assignableIds = new Set(roleOptions.value.map(role => String(role.id)))
+    userForm.roleIds = (res.data || []).filter(roleId => assignableIds.has(String(roleId)))
   } catch {
     // 忽略错误
   }
@@ -337,6 +327,8 @@ async function handleSubmit() {
   
   submitLoading.value = true
   try {
+    const assignableIds = new Set(roleOptions.value.map(role => String(role.id)))
+    const assignableRoleIds = userForm.roleIds.filter(roleId => assignableIds.has(String(roleId)))
     if (isEdit.value) {
       const updatePayload = {
         nickname: userForm.nickname,
@@ -348,7 +340,7 @@ async function handleSubmit() {
       }
       await updateUser(userForm.id, updatePayload)
       // 分配角色（始终调用，空列表表示清除所有角色）
-      await assignRoles(userForm.id, { role_ids: userForm.roleIds })
+      await assignRoles(userForm.id, { role_ids: assignableRoleIds })
       ElMessage.success('更新成功')
     } else {
       await createUser({
@@ -360,7 +352,7 @@ async function handleSubmit() {
         password: userForm.password,
         status: userForm.status,
         tenantId: userForm.tenantId,
-        roleIds: userForm.roleIds,
+        roleIds: assignableRoleIds,
       })
       ElMessage.success('创建成功')
     }
@@ -404,7 +396,6 @@ async function handleDelete(row) {
 onMounted(() => {
   loadUserList()
   loadRoleOptions()
-  loadTenantOptions()
 })
 </script>
 
