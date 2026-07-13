@@ -102,7 +102,10 @@
         <!-- 系统信息 -->
         <el-tab-pane label="系统信息" name="info">
           <el-descriptions :column="2" border>
-            <el-descriptions-item label="系统版本">v1.0.0</el-descriptions-item>
+            <el-descriptions-item label="前端版本">{{ frontendVersionInfo.version }}</el-descriptions-item>
+            <el-descriptions-item label="前端提交">{{ frontendVersionInfo.commit }}</el-descriptions-item>
+            <el-descriptions-item label="后端版本">{{ backendVersionInfo.version }}</el-descriptions-item>
+            <el-descriptions-item label="后端提交">{{ backendVersionInfo.commit }}</el-descriptions-item>
             <el-descriptions-item label="前端框架">Vue 3 + Element Plus</el-descriptions-item>
             <el-descriptions-item label="后端框架">Spring Boot</el-descriptions-item>
             <el-descriptions-item label="数据库">MySQL</el-descriptions-item>
@@ -120,6 +123,8 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { getSystemVersion } from '@/api/version'
+import { frontendVersionInfo } from '@/utils/version'
 
 const activeTab = ref('basic')
 
@@ -159,6 +164,21 @@ const systemInfo = reactive({
   startTime: ''
 })
 
+const backendVersionInfo = reactive({
+  version: 'unknown',
+  commit: 'unknown',
+})
+
+async function loadBackendVersion() {
+  try {
+    const response = await getSystemVersion()
+    backendVersionInfo.version = response.data?.version || 'unknown'
+    backendVersionInfo.commit = response.data?.commit?.slice(0, 7) || 'unknown'
+  } catch (error) {
+    console.warn('加载后端版本信息失败', error)
+  }
+}
+
 // 保存基础设置
 function handleSaveBasic() {
   ElMessage.success('基础设置保存成功')
@@ -186,7 +206,7 @@ function handleSaveSecurity() {
 }
 
 onMounted(() => {
-  // TODO: 从后端加载系统设置
+  void loadBackendVersion()
 })
 </script>
 

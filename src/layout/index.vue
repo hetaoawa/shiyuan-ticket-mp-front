@@ -69,6 +69,10 @@
           </el-breadcrumb>
         </div>
         <div class="header-right">
+          <div class="version-summary">
+            <span :title="`前端 ${frontendVersionLabel}`">前端 {{ frontendVersionLabel }}</span>
+            <span :title="`后端 ${backendVersionLabel}`">后端 {{ backendVersionLabel }}</span>
+          </div>
           <div class="tenant-context">
             <span class="tenant-label">当前租户</span>
             <el-select
@@ -118,9 +122,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { getSystemVersion } from '@/api/version'
+import { formatVersionLabel, frontendVersionLabel } from '@/utils/version'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Fold, Expand, Document, List, Plus, Setting, User, Lock,
@@ -133,6 +139,27 @@ const userStore = useUserStore()
 const selectedTenantId = ref(userStore.activeTenantId)
 const canManageTenantAdmins = computed(() => userStore.globalAdmin
   || userStore.roles.includes('SYSTEM_ADMIN'))
+const backendVersionInfo = ref({ version: 'unknown', commit: 'unknown' })
+const backendVersionLabel = computed(() => formatVersionLabel(
+  backendVersionInfo.value.version,
+  backendVersionInfo.value.commit,
+))
+
+async function loadBackendVersion() {
+  try {
+    const response = await getSystemVersion()
+    backendVersionInfo.value = {
+      version: response.data?.version,
+      commit: response.data?.commit,
+    }
+  } catch (error) {
+    console.warn('加载后端版本信息失败', error)
+  }
+}
+
+onMounted(() => {
+  void loadBackendVersion()
+})
 
 watch(() => userStore.activeTenantId, (value) => {
   selectedTenantId.value = value
@@ -363,6 +390,15 @@ async function handleTenantChange(tenantId) {
   display: flex;
   align-items: center;
   gap: 18px;
+}
+
+.version-summary {
+  display: flex;
+  flex-direction: column;
+  color: #909399;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
 }
 
 .tenant-context {
