@@ -71,6 +71,11 @@
       <el-table :data="tableData" v-loading="loading" stripe @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" />
         <el-table-column prop="id" label="工单ID" width="180" show-overflow-tooltip />
+        <el-table-column label="所属租户" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ formatTenantLabel(row.tenantName, row.tenantId) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
         <el-table-column prop="trackingNo" label="物流单号" width="150" show-overflow-tooltip />
         <el-table-column prop="status" label="状态" width="100">
@@ -268,6 +273,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { formatTenantLabel } from '@/utils/tenant'
 import { useRouter } from 'vue-router'
 import { getWorkOrderList, createWorkOrder, batchAssignWorkOrder, exportWorkOrders, aiParse } from '@/api/workorder'
 import { getSimpleUserList } from '@/api/admin/user'

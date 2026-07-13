@@ -50,7 +50,7 @@
         </el-table-column>
         <el-table-column prop="tenantId" label="租户ID" width="100">
           <template #default="{ row }">
-            {{ row.tenantId ?? '-' }}
+            {{ getTenantLabel(row.tenantId) }}
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="80" align="center">
@@ -102,14 +102,7 @@
           <el-input v-model="userForm.externalUserId" placeholder="外部系统用户ID（选填）" clearable />
         </el-form-item>
         <el-form-item label="租户">
-          <el-select v-model="userForm.tenantId" placeholder="请选择租户" clearable filterable allow-create>
-            <el-option
-              v-for="t in tenantOptions"
-              :key="t.id"
-              :label="t.name"
-              :value="t.id"
-            />
-          </el-select>
+          <el-input :model-value="getTenantLabel(userForm.tenantId)" disabled />
         </el-form-item>
         <el-form-item v-if="!isEdit" label="密码" prop="password">
           <el-input v-model="userForm.password" type="password" placeholder="请输入密码" />
@@ -159,7 +152,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { getUserList, createUser, updateUser, deleteUser, resetPassword, getUserRoles, assignRoles } from '@/api/admin/user'
 import { getRoleList } from '@/api/admin/role'
 import { getTenantOptions } from '@/api/admin/tenant'
+import { formatTenantLabel } from '@/utils/tenant'
+import { useUserStore } from '@/stores/user'
 
+const userStore = useUserStore()
 const loading = ref(false)
 const submitLoading = ref(false)
 const userList = ref([])
@@ -244,6 +240,19 @@ async function loadTenantOptions() {
   }
 }
 
+function getTenantLabel(tenantId) {
+  if (tenantId === null || tenantId === undefined) return '-'
+  const id = String(tenantId)
+  const tenant = tenantOptions.value.find(item => String(item.id) === id)
+  return formatTenantLabel(tenant?.tenantName, id)
+}
+
+function getActiveTenantId() {
+  return userStore.tenantId === null || userStore.tenantId === undefined
+    ? null
+    : String(userStore.tenantId)
+}
+
 function handleSearch() {
   searchForm.pageNum = 1
   loadUserList()
@@ -284,7 +293,9 @@ async function showEditDialog(row) {
     email: row.email,
     externalUserId: row.externalUserId || '',
     status: row.status,
-    tenantId: row.tenantId ?? null,
+    tenantId: row.tenantId === null || row.tenantId === undefined
+      ? getActiveTenantId()
+      : String(row.tenantId),
     roleIds: []
   })
   
@@ -315,7 +326,7 @@ function resetForm() {
     externalUserId: '',
     password: '',
     status: 1,
-    tenantId: null,
+    tenantId: getActiveTenantId(),
     roleIds: []
   })
 }

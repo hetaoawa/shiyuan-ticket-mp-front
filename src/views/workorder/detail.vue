@@ -61,6 +61,9 @@
               </span>
             </el-descriptions-item>
             <el-descriptions-item label="标题">{{ detail.title }}</el-descriptions-item>
+            <el-descriptions-item label="所属租户">
+              {{ formatTenantLabel(detail.tenantName, detail.tenantId) }}
+            </el-descriptions-item>
             <el-descriptions-item label="状态">
               <el-tag :type="getStatusType(detail.status)">
                 {{ getStatusLabel(detail.status) }}
@@ -373,6 +376,7 @@ import { getRoleList } from '@/api/admin/role'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CopyDocument, ArrowLeft } from '@element-plus/icons-vue'
 import FileUpload from '@/components/FileUpload.vue'
+import { formatTenantLabel } from '@/utils/tenant'
 
 const route = useRoute()
 const router = useRouter()
