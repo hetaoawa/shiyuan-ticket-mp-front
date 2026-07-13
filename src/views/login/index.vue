@@ -68,6 +68,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { parseRememberedLogin } from '@/utils/remembered-login'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 
@@ -93,20 +94,19 @@ const loginRules = {
 
 function loadSavedLogin() {
   const saved = localStorage.getItem('rememberedLogin')
-  if (saved) {
-    try {
-      const { tenantCode, username } = JSON.parse(saved)
-      loginForm.tenantCode = tenantCode || ''
-      loginForm.username = username || ''
-      loginForm.password = ''
-      rememberAccount.value = true
-      localStorage.setItem('rememberedLogin', JSON.stringify({
-        tenantCode: loginForm.tenantCode,
-        username: loginForm.username,
-      }))
-    } catch {
-      // 解析失败则忽略
+  if (saved !== null) {
+    const rememberedLogin = parseRememberedLogin(saved)
+    if (!rememberedLogin) {
+      localStorage.removeItem('rememberedLogin')
+      rememberAccount.value = false
+      return
     }
+
+    loginForm.tenantCode = rememberedLogin.tenantCode
+    loginForm.username = rememberedLogin.username
+    loginForm.password = ''
+    rememberAccount.value = true
+    localStorage.setItem('rememberedLogin', JSON.stringify(rememberedLogin))
   }
 }
 

@@ -200,38 +200,13 @@ const iconComponentMap = {
   'file-search': Search
 }
 
-// 静态回退菜单（API 无数据时使用）
-const fallbackMenus = [
-  {
-    id: 'workorder',
-    menuName: '工单管理',
-    icon: 'file-text',
-    children: [
-      { id: 'workorder-list', menuName: '工单列表', path: '/workorder/list', icon: 'list' },
-      { id: 'workorder-create', menuName: '创建工单', path: '/workorder/create', icon: 'plus' }
-    ]
-  },
-  {
-    id: 'system',
-    menuName: '系统管理',
-    icon: 'setting',
-    children: [
-      { id: 'system-user', menuName: '用户管理', path: '/system/user', icon: 'user' },
-      { id: 'system-role', menuName: '角色管理', path: '/system/role', icon: 'team' },
-      { id: 'system-menu', menuName: '菜单管理', path: '/system/menu', icon: 'menu' },
-      { id: 'system-deadletter', menuName: '死信管理', path: '/system/deadletter', icon: 'warning' },
-      { id: 'system-audit', menuName: '审计日志', path: '/system/audit', icon: 'monitor' }
-    ]
-  }
-]
-
-// 菜单数据（基于 API，修复重复路径；API 无数据时回退静态菜单）
+// 菜单数据完全以后端授权结果为准；空菜单保持为空，不能回退到特权菜单。
 const menuRoutes = computed(() => {
   if (userStore.globalAdmin && !userStore.activeTenantId) {
     return [{ id: 'system-tenant', menuName: '租户管理', path: '/system/tenant', icon: 'setting' }]
   }
   const menus = userStore.menuTree
-  if (!menus || menus.length === 0) return withTenantAdminMenu(fallbackMenus)
+  if (!menus || menus.length === 0) return []
   // 过滤 BUTTON 节点（按钮权限不应显示在侧边栏）
   const visibleMenus = menus
     .filter(parent => parent.menuType !== 'BUTTON')
