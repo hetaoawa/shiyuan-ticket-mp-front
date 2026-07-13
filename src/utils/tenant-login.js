@@ -5,24 +5,52 @@ export function firstQueryString(value) {
   return value.find((item) => typeof item === 'string') ?? ''
 }
 
-export function selectInitialTenant({ requestedTenant, rememberedTenant, options } = {}) {
-  const availableOptions = Array.isArray(options) ? options : []
-  const hasTenant = (tenantCode) => availableOptions.some(
-    (option) => option?.tenantCode === tenantCode,
-  )
+function normalizeTenantCode(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
+}
 
-  if (requestedTenant) {
-    return hasTenant(requestedTenant)
-      ? { tenantCode: requestedTenant, requestedUnavailable: false }
+function validTenantOptions(options) {
+  if (!Array.isArray(options)) return []
+
+  const seen = new Set()
+  const validOptions = []
+
+  for (const option of options) {
+    if (option === null || typeof option !== 'object') continue
+
+    const tenantCode = typeof option.tenantCode === 'string' ? option.tenantCode.trim() : ''
+    const normalizedCode = normalizeTenantCode(tenantCode)
+    if (!normalizedCode || seen.has(normalizedCode)) continue
+
+    seen.add(normalizedCode)
+    validOptions.push({ tenantCode, normalizedCode })
+  }
+
+  return validOptions
+}
+
+export function selectInitialTenant({ requestedTenant, rememberedTenant, options } = {}) {
+  const availableOptions = validTenantOptions(options)
+  const findTenant = (tenantCode) => {
+    const normalizedCode = normalizeTenantCode(tenantCode)
+    return availableOptions.find((option) => option.normalizedCode === normalizedCode)
+  }
+
+  if (typeof requestedTenant === 'string' && requestedTenant.length > 0) {
+    const requestedOption = findTenant(requestedTenant)
+    return requestedOption
+      ? { tenantCode: requestedOption.tenantCode, requestedUnavailable: false }
       : { tenantCode: '', requestedUnavailable: true }
   }
 
-  if (rememberedTenant && hasTenant(rememberedTenant)) {
-    return { tenantCode: rememberedTenant, requestedUnavailable: false }
+  const rememberedOption = findTenant(rememberedTenant)
+  if (rememberedOption) {
+    return { tenantCode: rememberedOption.tenantCode, requestedUnavailable: false }
   }
 
-  if (hasTenant('platform')) {
-    return { tenantCode: 'platform', requestedUnavailable: false }
+  const platformOption = findTenant('platform')
+  if (platformOption) {
+    return { tenantCode: platformOption.tenantCode, requestedUnavailable: false }
   }
 
   return {
@@ -47,9 +75,19 @@ export function resolveSafeRedirect(value, fallback = '/') {
   }
 
   const [path] = value.split(/[?#]/, 1)
-  return path === '/login' ? fallback : value
+  let decodedPath
+  try {
+    decodedPath = decodeURIComponent(path)
+  } catch {
+    return fallback
+  }
+
+  const normalizedPath = decodedPath.toLowerCase().replace(/\/+$/, '')
+  return normalizedPath === '/login' ? fallback : value
 }
 
 export function resolvePostLoginTarget(value, tenantCode) {
-  return tenantCode === 'platform' ? '/system/tenant' : resolveSafeRedirect(value)
+  return normalizeTenantCode(tenantCode) === 'platform'
+    ? '/system/tenant'
+    : resolveSafeRedirect(value)
 }

@@ -91,6 +91,14 @@ test('safe redirect rejects external, protocol-relative and login-loop values', 
   assert.equal(resolveSafeRedirect('/login#again'), '/')
 })
 
+test('safe redirect rejects normalized and encoded login loops', () => {
+  assert.equal(resolveSafeRedirect('/LOGIN'), '/')
+  assert.equal(resolveSafeRedirect('/login/'), '/')
+  assert.equal(resolveSafeRedirect('/%6cogin?x=1'), '/')
+  assert.equal(resolveSafeRedirect('/%E0%A4%A'), '/')
+  assert.equal(resolveSafeRedirect('/login-help'), '/login-help')
+})
+
 test('safe redirect accepts a local path with query and hash', () => {
   assert.equal(
     resolveSafeRedirect('/workorder/list?foo=bar#top'),
@@ -114,12 +122,62 @@ test('platform login targets tenant management while other tenants use safe redi
   )
 })
 
+test('tenant selection matches requested and remembered codes after trim and case normalization', () => {
+  assert.deepEqual(
+    selectInitialTenant({
+      requestedTenant: ' AcMe ',
+      rememberedTenant: 'old',
+      options: [{ tenantCode: 'acme', tenantName: 'Acme' }],
+    }),
+    { tenantCode: 'acme', requestedUnavailable: false },
+  )
+  assert.deepEqual(
+    selectInitialTenant({
+      rememberedTenant: ' OLD ',
+      options: [{ tenantCode: 'old', tenantName: 'Old' }],
+    }),
+    { tenantCode: 'old', requestedUnavailable: false },
+  )
+})
+
+test('tenant options ignore invalid and duplicate codes while preserving the first canonical code', () => {
+  const normalizedOptions = [
+    null,
+    'invalid',
+    {},
+    { tenantCode: '   ', tenantName: 'Empty' },
+    { tenantCode: 'AcMe', tenantName: 'First Acme' },
+    { tenantCode: 'acme', tenantName: 'Duplicate Acme' },
+    { tenantCode: 'beta', tenantName: 'Beta' },
+  ]
+
+  assert.deepEqual(selectInitialTenant({ requestedTenant: 'acme', options: normalizedOptions }), {
+    tenantCode: 'AcMe',
+    requestedUnavailable: false,
+  })
+  assert.deepEqual(selectInitialTenant({ options: [null, {}, { tenantCode: 'first' }] }), {
+    tenantCode: 'first',
+    requestedUnavailable: false,
+  })
+})
+
+test('platform matching ignores case and surrounding whitespace', () => {
+  assert.deepEqual(selectInitialTenant({ options: [{ tenantCode: 'PLATFORM' }] }), {
+    tenantCode: 'PLATFORM',
+    requestedUnavailable: false,
+  })
+  assert.equal(resolvePostLoginTarget('/workorder/list', ' PLATFORM '), '/system/tenant')
+})
+
 test('auth API exports the public tenant-options request', async () => {
   const authSource = await readFile(new URL('../src/api/auth.js', import.meta.url), 'utf8')
+  const functionMatch = authSource.match(
+    /export function getLoginTenantOptions\(\) \{([\s\S]*?)\r?\n\}/,
+  )
 
-  assert.match(authSource, /export function getLoginTenantOptions\(\)/)
+  assert.ok(functionMatch)
   assert.match(
-    authSource,
+    functionMatch[1],
     /url:\s*['"]\/auth\/tenant-options['"][\s\S]*?method:\s*['"]get['"]/,
   )
 })
