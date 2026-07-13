@@ -32,7 +32,12 @@
             v-if="userStore.globalAdmin && String(row.id) !== '0'"
             type="primary"
             link
-            :disabled="row.status !== 1 || String(row.id) === userStore.activeTenantId"
+            :loading="tenantActivatingId === String(row.id)"
+            :disabled="row.status !== 1
+              || String(row.id) === userStore.activeTenantId
+              || tenantActivatingId !== null
+              || userStore.tenantSwitching
+              || userStore.tenantContextBusy"
             @click="activate(row)"
           >切换至此租户</el-button>
           <el-button
@@ -130,6 +135,7 @@ const userStore = useUserStore()
 const tenants = ref([])
 const loading = ref(false)
 const saving = ref(false)
+const tenantActivatingId = ref(null)
 const dialogVisible = ref(false)
 const editingId = ref(null)
 const formRef = ref(null)
@@ -195,12 +201,28 @@ async function save() {
 }
 
 async function activate(row) {
-  if (String(row.id) === '0') return
-  await userStore.switchTenant(row.id, {
-    onUnrecoverable: () => router.replace('/login'),
-  })
-  ElMessage.success(`已切换至 ${row.tenantName}`)
-  await router.replace({ path: '/workorder/list', query: { tenant: String(row.id) } })
+  const tenantId = String(row.id)
+  if (tenantId === '0'
+    || row.status !== 1
+    || tenantId === userStore.activeTenantId
+    || tenantActivatingId.value !== null
+    || userStore.tenantSwitching
+    || userStore.tenantContextBusy) return
+
+  tenantActivatingId.value = tenantId
+  try {
+    await userStore.switchTenant(tenantId, {
+      onUnrecoverable: () => router.replace('/login'),
+    })
+    ElMessage.success(`已切换至 ${row.tenantName}`)
+    await router.replace({ path: '/workorder/list', query: { tenant: tenantId } })
+  } catch (error) {
+    console.error('切换租户失败', error)
+  } finally {
+    if (tenantActivatingId.value === tenantId) {
+      tenantActivatingId.value = null
+    }
+  }
 }
 
 async function openAdminDialog(row) {

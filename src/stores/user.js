@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import * as authApi from '@/api/auth'
 import { getTenantOptions } from '@/api/admin/tenant'
 import { normalizeAuthContext, synchronizeTenantSwitch } from '@/utils/auth'
+import { createTenantContextOperationGate } from '@/utils/tenant-context-gate'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('token') || '')
@@ -21,7 +22,14 @@ export const useUserStore = defineStore('user', () => {
   const permissions = ref([])
   const menuTree = ref([])
   const routerLoaded = ref(false)
+  const tenantSwitching = ref(false)
+  const tenantContextOperationCount = ref(0)
   const tenantId = computed(() => activeTenantId.value)
+  const tenantContextBusy = computed(() => tenantContextOperationCount.value > 0)
+  const tenantContextGate = createTenantContextOperationGate((state) => {
+    tenantSwitching.value = state.tenantSwitching
+    tenantContextOperationCount.value = state.operationCount
+  })
 
   function setToken(value) {
     token.value = value || ''
@@ -91,22 +99,36 @@ export const useUserStore = defineStore('user', () => {
     routerLoaded.value = false
   }
 
+  function acquireTenantContextOperation() {
+    return tenantContextGate.tryAcquireOperation()
+  }
+
   async function switchTenant(tenant, { onUnrecoverable } = {}) {
+    const finishTenantSwitch = tenantContextGate.tryBeginSwitch()
+    if (!finishTenantSwitch) {
+      throw new Error(tenantSwitching.value
+        ? '租户切换正在进行，请稍后重试'
+        : '当前存在租户相关操作，请等待操作完成后再切换租户')
+    }
     const tenantIdValue = typeof tenant === 'object' ? tenant?.id : tenant
-    await synchronizeTenantSwitch({
-      tenantId: tenantIdValue,
-      requestSwitch: authApi.switchTenant,
-      applyContext: applyAuthContext,
-      clearTenantState: clearTenantScopedState,
-      refreshIdentity: getUserInfo,
-      refreshTenants: loadAvailableTenants,
-      refreshMenu: getMenuTree,
-      resetState,
-      onUnrecoverable,
-      isTargetTenantActive: () => activeTenantId.value !== null
-        && String(activeTenantId.value) === String(tenantIdValue),
-    })
-    routerLoaded.value = true
+    try {
+      await synchronizeTenantSwitch({
+        tenantId: tenantIdValue,
+        requestSwitch: authApi.switchTenant,
+        applyContext: applyAuthContext,
+        clearTenantState: clearTenantScopedState,
+        refreshIdentity: getUserInfo,
+        refreshTenants: loadAvailableTenants,
+        refreshMenu: getMenuTree,
+        resetState,
+        onUnrecoverable,
+        isTargetTenantActive: () => activeTenantId.value !== null
+          && String(activeTenantId.value) === String(tenantIdValue),
+      })
+      routerLoaded.value = true
+    } finally {
+      finishTenantSwitch()
+    }
   }
 
   function resetState() {
@@ -156,6 +178,8 @@ export const useUserStore = defineStore('user', () => {
     permissions,
     menuTree,
     routerLoaded,
+    tenantSwitching,
+    tenantContextBusy,
     setToken,
     login,
     getUserInfo,
@@ -163,6 +187,7 @@ export const useUserStore = defineStore('user', () => {
     getMenuTree,
     clearTenantScopedState,
     invalidateAuthorizationState,
+    acquireTenantContextOperation,
     switchTenant,
     resetState,
     logout,

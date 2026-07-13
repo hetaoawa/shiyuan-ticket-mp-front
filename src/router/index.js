@@ -54,7 +54,7 @@ const staticRoutes = [
         path: 'settings',
         name: 'Settings',
         component: () => import('@/views/settings/index.vue'),
-        meta: { title: '系统设置' }
+        meta: { title: '系统设置', permission: 'settings:view' }
       },
       {
         path: 'system/tenant',
@@ -103,6 +103,11 @@ const router = createRouter({
 
 const whiteList = ['/login']
 
+function hasRoutePermission(to, permissions) {
+  const requiredPermission = to.meta?.permission
+  return !requiredPermission || permissions.includes(requiredPermission)
+}
+
 router.beforeEach(async (to, from, next) => {
   document.title = to.meta.title ? `${to.meta.title} - 中台工单流转系统` : '中台工单流转系统'
 
@@ -139,6 +144,10 @@ router.beforeEach(async (to, from, next) => {
         next({ path: '/', replace: true })
         return
       }
+      if (!hasRoutePermission(to, userStore.permissions)) {
+        next({ path: '/', replace: true })
+        return
+      }
       next({ ...to, replace: true })
     } catch (error) {
       userStore.resetState()
@@ -155,6 +164,11 @@ router.beforeEach(async (to, from, next) => {
   if (!userStore.globalAdmin
     && !userStore.roles.includes('SYSTEM_ADMIN')
     && to.path === '/system/tenant') {
+    next('/')
+    return
+  }
+
+  if (!hasRoutePermission(to, userStore.permissions)) {
     next('/')
     return
   }

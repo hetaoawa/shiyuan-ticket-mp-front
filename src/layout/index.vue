@@ -80,6 +80,7 @@
               v-model="selectedTenantId"
               placeholder="请选择业务租户"
               class="tenant-select"
+              :disabled="userStore.tenantSwitching || userStore.tenantContextBusy"
               @change="handleTenantChange"
             >
               <el-option
@@ -100,7 +101,7 @@
               <el-dropdown-menu>
                 <el-dropdown-item v-if="canManageTenantAdmins" command="tenants">租户管理</el-dropdown-item>
                 <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-                <el-dropdown-item command="settings">系统设置</el-dropdown-item>
+                <el-dropdown-item v-if="canViewSettings" command="settings">系统设置</el-dropdown-item>
                 <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -139,6 +140,7 @@ const userStore = useUserStore()
 const selectedTenantId = ref(userStore.activeTenantId)
 const canManageTenantAdmins = computed(() => userStore.globalAdmin
   || userStore.roles.includes('SYSTEM_ADMIN'))
+const canViewSettings = computed(() => userStore.permissions.includes('settings:view'))
 const backendVersionInfo = ref({ version: 'unknown', commit: 'unknown' })
 const backendVersionLabel = computed(() => formatVersionLabel(
   backendVersionInfo.value.version,
@@ -310,6 +312,10 @@ async function handleCommand(command) {
 }
 
 async function handleTenantChange(tenantId) {
+  if (userStore.tenantSwitching || userStore.tenantContextBusy) {
+    selectedTenantId.value = userStore.activeTenantId
+    return
+  }
   if (!tenantId || tenantId === userStore.activeTenantId) return
   try {
     await userStore.switchTenant(tenantId, {
