@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { canAccessRoute } from '@/utils/permission'
+import { buildLoginLocation } from '@/utils/tenant-login'
 
 const staticRoutes = [
   {
@@ -122,7 +123,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (!userStore.token) {
-    next(`/login?redirect=${to.path}`)
+    next(buildLoginLocation(to))
     return
   }
 
@@ -154,7 +155,7 @@ router.beforeEach(async (to, from, next) => {
       next({ ...to, replace: true })
     } catch (error) {
       userStore.resetState()
-      next(`/login?redirect=${to.path}`)
+      next(buildLoginLocation(to))
     }
     return
   }
