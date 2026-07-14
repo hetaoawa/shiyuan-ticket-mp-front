@@ -112,6 +112,8 @@ const selectedTenantId = ref(userStore.activeTenantId)
 const canManageTenantAdmins = computed(() => userStore.globalAdmin
   || userStore.roles.includes('SYSTEM_ADMIN'))
 const canViewSettings = computed(() => userStore.permissions.includes('settings:view'))
+const canViewPlatformSsl = computed(() => userStore.globalAdmin
+  && userStore.permissions.includes('platform:ssl:manage'))
 const backendVersionInfo = ref({ version: 'unknown', commit: 'unknown' })
 const backendVersionLabel = computed(() => formatVersionLabel(
   backendVersionInfo.value.version,
@@ -174,19 +176,33 @@ const iconComponentMap = {
 // 菜单数据完全以后端授权结果为准；空菜单保持为空，不能回退到特权菜单。
 const menuRoutes = computed(() => {
   if (userStore.globalAdmin && !userStore.activeTenantId) {
-    return [{
+    return withPlatformSslMenu([{
       id: 'system-tenant',
       menuName: '租户管理',
       menuType: 'MENU',
       path: '/system/tenant',
       icon: 'setting',
       children: [],
-    }]
+    }])
   }
-  const menus = userStore.menuTree
-  if (!menus || menus.length === 0) return []
-  return withTenantAdminMenu(menus)
+  const menus = userStore.menuTree || []
+  return withPlatformSslMenu(withTenantAdminMenu(menus))
 })
+
+function withPlatformSslMenu(menus) {
+  if (!canViewPlatformSsl.value || containsMenuPath(menus, '/system/platform-ssl')) return menus
+  return [
+    ...menus,
+    {
+      id: 'platform-ssl',
+      menuName: '平台 SSL',
+      menuType: 'MENU',
+      path: '/system/platform-ssl',
+      icon: 'lock',
+      children: [],
+    },
+  ]
+}
 
 function withTenantAdminMenu(menus) {
   if (!canManageTenantAdmins.value) return menus

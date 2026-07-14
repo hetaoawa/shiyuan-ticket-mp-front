@@ -59,6 +59,17 @@ const staticRoutes = [
         meta: { title: '系统设置', permission: 'settings:view' }
       },
       {
+        path: 'system/platform-ssl',
+        name: 'PlatformSsl',
+        component: () => import('@/views/admin/platform-ssl.vue'),
+        meta: {
+          title: '平台 SSL',
+          permission: 'platform:ssl:manage',
+          globalAdmin: true,
+          tenantNeutral: true,
+        }
+      },
+      {
         path: 'system/tenant',
         name: 'AdminTenants',
         component: () => import('@/views/admin/tenants.vue'),
@@ -112,6 +123,10 @@ function canAccessTargetRoute(to, userStore) {
   }))
 }
 
+function isTenantNeutralRoute(to) {
+  return to.matched.some(record => record.meta?.tenantNeutral === true)
+}
+
 function resolveRootPath(userStore) {
   if (userStore.globalAdmin && !userStore.activeTenantId) return '/system/tenant'
 
@@ -146,7 +161,8 @@ router.beforeEach(async (to, from, next) => {
       }
       if (userStore.globalAdmin && !userStore.activeTenantId) {
         userStore.setRouterLoaded(true)
-        next(to.path === '/system/tenant'
+        const canStayWithoutTenant = to.path === '/system/tenant' || isTenantNeutralRoute(to)
+        next(canStayWithoutTenant && canAccessTargetRoute(to, userStore)
           ? { ...to, replace: true }
           : { path: '/system/tenant', replace: true })
         return
@@ -175,7 +191,10 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  if (userStore.globalAdmin && !userStore.activeTenantId && to.path !== '/system/tenant') {
+  if (userStore.globalAdmin
+    && !userStore.activeTenantId
+    && to.path !== '/system/tenant'
+    && !isTenantNeutralRoute(to)) {
     next('/system/tenant')
     return
   }
