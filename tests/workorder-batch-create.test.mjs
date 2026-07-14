@@ -9,6 +9,11 @@ import {
   normalizeBatchLines,
   normalizeBatchParseResponse,
 } from '../src/utils/workorder-create.js'
+import {
+  DEFERRED_UPLOAD_STAGE,
+  createDeferredUploadTask,
+  runDeferredUploadTask,
+} from '../src/utils/deferred-upload.js'
 
 test('batch lines are trimmed, locally deduplicated, limited, and extracted in order', () => {
   const extracted = extractBatchItems('  YT123456 更址 上海  \n\nyt123456 更址 上海\nSF987654 拦截')
@@ -58,6 +63,43 @@ test('idempotency keys match the backend contract and batch IDs remain ordered s
   assert.deepEqual(normalizeBatchCreateResponse({ data: { ids: [3, 2, 1] } }).workOrderIds, ['3', '2', '1'])
 })
 
+test('deferred attachment retries confirm on the same fileId after a lost success response', async () => {
+  const task = createDeferredUploadTask('work-order-1', 'local-image-1')
+  const calls = { presign: 0, put: 0, confirm: 0 }
+  let serverConfirmed = false
+  const adapters = {
+    file: { name: 'proof.png' },
+    presign: async () => {
+      calls.presign += 1
+      return { fileId: 'file-9007199254740993', uploadUrl: 'https://storage.test/upload' }
+    },
+    put: async () => {
+      calls.put += 1
+      assert.equal(task.fileId, 'file-9007199254740993')
+      assert.equal(task.stage, DEFERRED_UPLOAD_STAGE.PUTTING)
+    },
+    confirm: async (fileId) => {
+      calls.confirm += 1
+      assert.equal(fileId, 'file-9007199254740993')
+      if (!serverConfirmed) {
+        serverConfirmed = true
+        throw new Error('client timed out after server committed confirmation')
+      }
+    },
+  }
+
+  await assert.rejects(runDeferredUploadTask(task, adapters), /client timed out/)
+  assert.deepEqual(calls, { presign: 1, put: 1, confirm: 1 })
+  assert.equal(task.fileId, 'file-9007199254740993')
+  assert.equal(task.stage, DEFERRED_UPLOAD_STAGE.CONFIRMING)
+  assert.equal(task.status, 'failed')
+
+  const result = await runDeferredUploadTask(task, adapters)
+  assert.equal(result.status, 'success')
+  assert.equal(result.stage, DEFERRED_UPLOAD_STAGE.CONFIRMED)
+  assert.deepEqual(calls, { presign: 1, put: 1, confirm: 2 })
+})
+
 test('shared editor and deferred uploader preserve retry and tenant-lock invariants', async () => {
   const editor = await readFile(new URL('../src/components/WorkOrderCreateEditor.vue', import.meta.url), 'utf8')
   const uploader = await readFile(new URL('../src/components/FileUpload.vue', import.meta.url), 'utf8')
@@ -68,7 +110,8 @@ test('shared editor and deferred uploader preserve retry and tenant-lock invaria
   assert.match(editor, /await fileUploadRef\.value\.uploadAll\(createdIds\.value\)/)
   assert.match(editor, /idempotencyPayload\.value !== payloadFingerprint[\s\S]*idempotencyKey\.value = createIdempotencyKey\(\)/)
   assert.match(uploader, /taskKey = `\$\{String\(workOrderId\)\}::\$\{pending\.localId\}`/)
-  assert.match(uploader, /existing\?\.status === 'success'/)
+  assert.match(uploader, /uploadTasks\.get\(taskKey\)/)
+  assert.match(uploader, /runDeferredUploadTask\(task/)
   assert.match(uploader, /onBeforeUnmount[\s\S]*releasePreviewUrl/)
   assert.match(createPage, /<WorkOrderCreateEditor/)
   assert.match(listPage, /<WorkOrderCreateEditor/)

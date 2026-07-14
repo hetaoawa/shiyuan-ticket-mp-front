@@ -60,6 +60,10 @@ import { Plus, ArrowLeft, ArrowRight, Document, Delete } from '@element-plus/ico
 import { getPresignUrl, confirmUpload, getDownloadUrl, getFilesByBiz, deleteFile } from '@/api/file'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import {
+  createDeferredUploadTask,
+  runDeferredUploadTask,
+} from '@/utils/deferred-upload'
 
 const userStore = useUserStore()
 
@@ -290,36 +294,45 @@ async function handleUpload(options) {
 
 async function uploadOne(workOrderId, pending) {
   const taskKey = `${String(workOrderId)}::${pending.localId}`
-  const existing = uploadTasks.get(taskKey)
-  if (existing?.status === 'success') return existing
-
-  const task = { workOrderId: String(workOrderId), localId: pending.localId, status: 'uploading' }
-  uploadTasks.set(taskKey, task)
-  try {
-    const file = pending.file
-    const presignRes = await getPresignUrl({
-      originalName: file.name,
-      contentType: file.type,
-      fileSize: file.size,
-      bizType: props.bizType,
-      bizId: String(workOrderId),
-    })
-    const { fileId, uploadUrl } = presignRes.data
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'PUT',
-      body: file,
-      headers: { 'Content-Type': file.type },
-    })
-    if (!uploadResponse.ok) {
-      throw new Error(`对象存储上传失败（HTTP ${uploadResponse.status}）`)
-    }
-    await confirmUpload(fileId)
-    Object.assign(task, { status: 'success', fileId: String(fileId) })
-    return task
-  } catch (error) {
-    Object.assign(task, { status: 'failed', error })
-    throw error
+  let task = uploadTasks.get(taskKey)
+  if (!task) {
+    task = createDeferredUploadTask(workOrderId, pending.localId)
+    uploadTasks.set(taskKey, task)
   }
+
+  const file = pending.file
+  return runDeferredUploadTask(task, {
+    file,
+    presign: async () => {
+      const response = await getPresignUrl({
+        originalName: file.name,
+        contentType: file.type,
+        fileSize: file.size,
+        bizType: props.bizType,
+        bizId: String(workOrderId),
+      })
+      return response.data
+    },
+    put: async (uploadUrl) => {
+      const response = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      })
+      if (!response.ok) {
+        const error = new Error(`对象存储上传失败（HTTP ${response.status}）`)
+        error.presignInvalid = [400, 401, 403, 404, 410].includes(response.status)
+        throw error
+      }
+    },
+    confirm: confirmUpload,
+    isDefinitelyUnconfirmed: (error, currentTask) => {
+      const code = error?.response?.data?.errorCode || error?.response?.data?.code
+      return code === 'FILE_NOT_UPLOADED'
+        || code === 'UPLOAD_OBJECT_NOT_FOUND'
+        || (currentTask.presignInvalid && error?.response?.status === 400)
+    },
+  })
 }
 
 async function uploadAll(bizIds) {
