@@ -291,9 +291,14 @@ test('login view follows normalized tenant query changes and uses replace after 
 
 test('login controls expose password-manager hints and keyboard focus progression', async () => {
   const source = await readLoginView()
+  const saveLoginInfo = source.match(/function\s+saveLoginInfo\(\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
 
   assert.match(source, /autocomplete="username"/)
   assert.match(source, /autocomplete="current-password"/)
+  assert.match(source, /记住租户和账号/)
+  assert.match(source, /密码可由浏览器密码管理器安全保存/)
+  assert.match(source, /class="remember-help"\s+role="note"/)
+  assert.doesNotMatch(saveLoginInfo, /password/)
   assert.match(source, /ref="tenantSelectRef"[\s\S]*?@keyup\.enter\.stop="focusUsername"/)
   assert.match(source, /ref="usernameInputRef"[\s\S]*?@keyup\.enter\.prevent="focusPassword"/)
   assert.match(source, /ref="passwordInputRef"[\s\S]*?@keyup\.enter="handleLogin"/)

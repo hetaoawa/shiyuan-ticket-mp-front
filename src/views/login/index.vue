@@ -86,6 +86,9 @@
             <el-form-item>
               <div class="remember-row">
                 <el-checkbox v-model="rememberAccount">记住租户和账号</el-checkbox>
+                <div class="remember-help" role="note">
+                  仅在本机保存租户和账号；密码可由浏览器密码管理器安全保存。
+                </div>
               </div>
             </el-form-item>
 
@@ -391,7 +394,14 @@ onMounted(async () => {
 .remember-row {
   width: 100%;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.remember-help {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
 }
 </style>
