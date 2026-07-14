@@ -17,38 +17,7 @@
         text-color="#bfcbd9"
         active-text-color="#409eff"
       >
-        <template v-for="menu in menuRoutes" :key="menu.id">
-          <!-- 单级菜单（无子菜单） -->
-          <el-menu-item
-            v-if="!menu.children || menu.children.length === 0"
-            :index="menu.path"
-          >
-            <el-icon>
-              <component :is="getIconComponent(menu.icon)" />
-            </el-icon>
-            <template #title>{{ menu.menuName }}</template>
-          </el-menu-item>
-
-          <!-- 多级菜单 -->
-          <el-sub-menu v-else :index="String(menu.id)">
-            <template #title>
-              <el-icon>
-                <component :is="getIconComponent(menu.icon)" />
-              </el-icon>
-              <span>{{ menu.menuName }}</span>
-            </template>
-            <el-menu-item
-              v-for="child in menu.children"
-              :key="child.id"
-              :index="child.path"
-            >
-              <el-icon>
-                <component :is="getIconComponent(child.icon)" />
-              </el-icon>
-              <template #title>{{ child.menuName }}</template>
-            </el-menu-item>
-          </el-sub-menu>
-        </template>
+        <SidebarMenu :menus="menuRoutes" :get-icon-component="getIconComponent" />
       </el-menu>
     </el-aside>
 
@@ -128,6 +97,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { getSystemVersion } from '@/api/version'
 import { formatVersionLabel, frontendVersionLabel } from '@/utils/version'
+import { containsMenuPath } from '@/utils/menu'
+import SidebarMenu from '@/components/SidebarMenu.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Fold, Expand, Document, List, Plus, Setting, User, Lock,
@@ -203,52 +174,33 @@ const iconComponentMap = {
 // 菜单数据完全以后端授权结果为准；空菜单保持为空，不能回退到特权菜单。
 const menuRoutes = computed(() => {
   if (userStore.globalAdmin && !userStore.activeTenantId) {
-    return [{ id: 'system-tenant', menuName: '租户管理', path: '/system/tenant', icon: 'setting' }]
+    return [{
+      id: 'system-tenant',
+      menuName: '租户管理',
+      menuType: 'MENU',
+      path: '/system/tenant',
+      icon: 'setting',
+      children: [],
+    }]
   }
   const menus = userStore.menuTree
   if (!menus || menus.length === 0) return []
-  // 过滤 BUTTON 节点（按钮权限不应显示在侧边栏）
-  const visibleMenus = menus
-    .filter(parent => parent.menuType !== 'BUTTON')
-    .map(parent => {
-      if (!parent.children || parent.children.length === 0) return parent
-      return {
-        ...parent,
-        children: parent.children.filter(child => child.menuType !== 'BUTTON')
-      }
-    })
-    // 过滤掉没有子菜单的 DIR 节点（避免显示空目录）
-    .filter(parent => {
-      if (parent.menuType === 'DIR' && parent.children && parent.children.length === 0) return false
-      return true
-    })
-  // 修复后端返回重复路径的 bug（如角色管理路径与用户管理相同）
-  const usedPaths = new Set()
-  const normalizedMenus = visibleMenus.map(parent => {
-    if (!parent.children || parent.children.length === 0) return parent
-    return {
-      ...parent,
-      children: parent.children.map(child => {
-        let path = child.path
-        if (usedPaths.has(path)) {
-          // 路径重复，使用 menuCode 生成唯一路径
-          path = '/' + child.menuCode.replace(/:/g, '/')
-        }
-        usedPaths.add(path)
-        return { ...child, path }
-      })
-    }
-  })
-  return withTenantAdminMenu(normalizedMenus)
+  return withTenantAdminMenu(menus)
 })
 
 function withTenantAdminMenu(menus) {
   if (!canManageTenantAdmins.value) return menus
-  const alreadyPresent = menus.some(menu => menu.path === '/system/tenant'
-    || menu.children?.some(child => child.path === '/system/tenant'))
+  const alreadyPresent = containsMenuPath(menus, '/system/tenant')
   if (alreadyPresent) return menus
   return [
-    { id: 'system-tenant', menuName: '租户管理', path: '/system/tenant', icon: 'setting' },
+    {
+      id: 'system-tenant',
+      menuName: '租户管理',
+      menuType: 'MENU',
+      path: '/system/tenant',
+      icon: 'setting',
+      children: [],
+    },
     ...menus,
   ]
 }
@@ -293,11 +245,15 @@ async function handleTenantChange(tenantId) {
   }
   if (!tenantId || tenantId === userStore.activeTenantId) return
   try {
-    await userStore.switchTenant(tenantId, {
+    const tenant = userStore.availableTenants.find((item) => item.id === String(tenantId))
+    await userStore.switchTenant(tenant || tenantId, {
       onUnrecoverable: () => router.replace('/login'),
     })
     ElMessage.success(`已切换至 ${userStore.activeTenantName}`)
-    await router.replace({ path: '/workorder/list', query: { tenant: tenantId } })
+    await router.replace({
+      path: '/workorder/list',
+      query: { tenant: userStore.activeTenantCode },
+    })
   } catch (error) {
     selectedTenantId.value = userStore.activeTenantId
     console.error('切换租户失败', error)

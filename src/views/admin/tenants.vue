@@ -16,7 +16,9 @@
     </template>
 
     <el-table :data="tenants" v-loading="loading" border>
-      <el-table-column prop="id" label="租户ID" min-width="160" />
+      <el-table-column label="租户ID" min-width="160">
+        <template #default="{ row }"><OpaqueId :value="row.id" /></template>
+      </el-table-column>
       <el-table-column prop="tenantCode" label="租户编码" min-width="160" />
       <el-table-column prop="tenantName" label="租户名称" min-width="180" />
       <el-table-column label="状态" width="90">
@@ -129,6 +131,7 @@ import {
 import { getSimpleUserList } from '@/api/admin/user'
 import { useUserStore } from '@/stores/user'
 import { synchronizeAdministratorAuthorization } from '@/utils/auth'
+import OpaqueId from '@/components/OpaqueId.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -215,7 +218,10 @@ async function activate(row) {
       onUnrecoverable: () => router.replace('/login'),
     })
     ElMessage.success(`已切换至 ${row.tenantName}`)
-    await router.replace({ path: '/workorder/list', query: { tenant: tenantId } })
+    await router.replace({
+      path: '/workorder/list',
+      query: { tenant: userStore.activeTenantCode },
+    })
   } catch (error) {
     console.error('切换租户失败', error)
   } finally {

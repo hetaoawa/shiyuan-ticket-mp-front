@@ -13,7 +13,9 @@
 
       <!-- 角色列表 -->
       <el-table :data="roleList" v-loading="loading" border>
-        <el-table-column prop="id" label="角色ID" width="100" />
+        <el-table-column label="角色ID" width="140">
+          <template #default="{ row }"><OpaqueId :value="row.id" /></template>
+        </el-table-column>
         <el-table-column prop="roleName" label="角色名称" width="150" />
         <el-table-column prop="roleCode" label="权限字符" width="160" />
         <el-table-column prop="remark" label="备注" />
@@ -72,6 +74,7 @@ import { ref, reactive, onMounted, nextTick } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getRoleList, createRole, updateRole, deleteRole, getRolePermissions, assignPermissions, getAllPermissions } from '@/api/admin/role'
+import OpaqueId from '@/components/OpaqueId.vue'
 
 const loading = ref(false)
 const submitLoading = ref(false)

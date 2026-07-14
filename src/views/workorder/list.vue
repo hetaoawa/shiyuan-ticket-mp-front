@@ -70,14 +70,21 @@
       <!-- 表格 -->
       <el-table :data="tableData" v-loading="loading" stripe @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" />
-        <el-table-column prop="id" label="工单ID" width="180" show-overflow-tooltip />
-        <el-table-column label="所属租户" min-width="180" show-overflow-tooltip>
+        <el-table-column label="工单ID" width="180">
+          <template #default="{ row }"><OpaqueId :value="row.id" /></template>
+        </el-table-column>
+        <el-table-column label="所属租户" min-width="180">
           <template #default="{ row }">
-            {{ formatTenantLabel(row.tenantName, row.tenantId) }}
+            <OpaqueId
+              :value="row.tenantId"
+              :label="formatTenantLabel(row.tenantName, row.tenantId)"
+            />
           </template>
         </el-table-column>
         <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="trackingNo" label="物流单号" width="150" show-overflow-tooltip />
+        <el-table-column label="物流单号" width="150">
+          <template #default="{ row }"><OpaqueId :value="row.trackingNo" /></template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">
@@ -96,7 +103,11 @@
           <template #default="{ row }">
             <span v-if="row.assigneeName">{{ row.assigneeName }}</span>
             <span v-else-if="row.assigneeRoleName">{{ row.assigneeRoleName }}</span>
-            <span v-else-if="row.assigneeId">用户 {{ row.assigneeId }}</span>
+            <OpaqueId
+              v-else-if="row.assigneeId"
+              :value="row.assigneeId"
+              :label="`用户 ${row.assigneeId}`"
+            />
             <span v-else-if="row.assigneeRole">{{ row.assigneeRole }}</span>
             <span v-else style="color: #909399;">未派发</span>
           </template>
@@ -288,6 +299,7 @@ import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 import { Download, Promotion, Plus } from '@element-plus/icons-vue'
 import FileUpload from '@/components/FileUpload.vue'
+import OpaqueId from '@/components/OpaqueId.vue'
 
 const router = useRouter()
 const userStore = useUserStore()

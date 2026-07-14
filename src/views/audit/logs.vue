@@ -31,9 +31,13 @@
       </el-form>
 
       <el-table :data="tableData" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="180" show-overflow-tooltip />
+        <el-table-column label="ID" width="180">
+          <template #default="{ row }"><OpaqueId :value="row.id" /></template>
+        </el-table-column>
         <el-table-column prop="bizType" label="业务类型" width="120" />
-        <el-table-column prop="bizId" label="业务ID" width="180" show-overflow-tooltip />
+        <el-table-column label="业务ID" width="180">
+          <template #default="{ row }"><OpaqueId :value="row.bizId" /></template>
+        </el-table-column>
         <el-table-column prop="action" label="操作" width="125">
           <template #default="{ row }">
             <el-tag>{{ row.action }}</el-tag>
@@ -66,6 +70,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { getAuditLogs } from '@/api/audit'
+import OpaqueId from '@/components/OpaqueId.vue'
 
 const loading = ref(false)
 const tableData = ref([])

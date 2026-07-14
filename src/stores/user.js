@@ -4,6 +4,7 @@ import * as authApi from '@/api/auth'
 import { getTenantOptions } from '@/api/admin/tenant'
 import { normalizeAuthContext, synchronizeTenantSwitch } from '@/utils/auth'
 import { createTenantContextOperationGate } from '@/utils/tenant-context-gate'
+import { normalizeBackendMenus } from '@/utils/menu'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('token') || '')
@@ -15,6 +16,7 @@ export const useUserStore = defineStore('user', () => {
   const externalUserId = ref(null)
   const principalTenantId = ref(null)
   const activeTenantId = ref(null)
+  const activeTenantCode = ref(sessionStorage.getItem('activeTenantCode') || '')
   const activeTenantName = ref(null)
   const globalAdmin = ref(false)
   const availableTenants = ref([])
@@ -37,11 +39,20 @@ export const useUserStore = defineStore('user', () => {
     else localStorage.removeItem('token')
   }
 
+  function setActiveTenantCode(value) {
+    activeTenantCode.value = typeof value === 'string' ? value.trim().toLowerCase() : ''
+    if (activeTenantCode.value) sessionStorage.setItem('activeTenantCode', activeTenantCode.value)
+    else sessionStorage.removeItem('activeTenantCode')
+  }
+
   function applyAuthContext(response) {
     const context = normalizeAuthContext(response)
     principalTenantId.value = context.principalTenantId
     activeTenantId.value = context.activeTenantId
     activeTenantName.value = context.activeTenantName
+    if (typeof response?.activeTenantCode === 'string') {
+      setActiveTenantCode(response.activeTenantCode)
+    }
     globalAdmin.value = context.globalAdmin
   }
 
@@ -51,6 +62,7 @@ export const useUserStore = defineStore('user', () => {
     userId.value = response.userId === null || response.userId === undefined
       ? null : String(response.userId)
     username.value = response.username || ''
+    setActiveTenantCode(loginData?.tenantCode)
     applyAuthContext(response)
     return response
   }
@@ -75,6 +87,8 @@ export const useUserStore = defineStore('user', () => {
     availableTenants.value = (response.data || [])
       .filter((tenant) => String(tenant.id) !== '0' && tenant.status === 1)
       .map((tenant) => ({ ...tenant, id: String(tenant.id) }))
+    const activeTenant = availableTenants.value.find((tenant) => tenant.id === activeTenantId.value)
+    if (activeTenant?.tenantCode) setActiveTenantCode(activeTenant.tenantCode)
     return availableTenants.value
   }
 
@@ -84,7 +98,7 @@ export const useUserStore = defineStore('user', () => {
       return menuTree.value
     }
     const response = await authApi.getMenuTree()
-    menuTree.value = response.data || response || []
+    menuTree.value = normalizeBackendMenus(response.data || response || [])
     return menuTree.value
   }
 
@@ -111,6 +125,9 @@ export const useUserStore = defineStore('user', () => {
         : '当前存在租户相关操作，请等待操作完成后再切换租户')
     }
     const tenantIdValue = typeof tenant === 'object' ? tenant?.id : tenant
+    const targetTenant = typeof tenant === 'object'
+      ? tenant
+      : availableTenants.value.find((item) => item.id === String(tenantIdValue))
     try {
       await synchronizeTenantSwitch({
         tenantId: tenantIdValue,
@@ -125,6 +142,7 @@ export const useUserStore = defineStore('user', () => {
         isTargetTenantActive: () => activeTenantId.value !== null
           && String(activeTenantId.value) === String(tenantIdValue),
       })
+      if (targetTenant?.tenantCode) setActiveTenantCode(targetTenant.tenantCode)
       routerLoaded.value = true
     } finally {
       finishTenantSwitch()
@@ -141,6 +159,7 @@ export const useUserStore = defineStore('user', () => {
     externalUserId.value = null
     principalTenantId.value = null
     activeTenantId.value = null
+    setActiveTenantCode('')
     activeTenantName.value = null
     globalAdmin.value = false
     availableTenants.value = []
@@ -171,6 +190,7 @@ export const useUserStore = defineStore('user', () => {
     tenantId,
     principalTenantId,
     activeTenantId,
+    activeTenantCode,
     activeTenantName,
     globalAdmin,
     availableTenants,

@@ -46,9 +46,10 @@ function handle401(message) {
     fullPath: currentRoute.fullPath,
     query: { ...currentRoute.query },
   }
-  const loginLocation = buildLoginLocation(routeSnapshot)
-  showError(message || '未登录或登录已过期')
   const userStore = useUserStore()
+  const activeTenantCodeSnapshot = userStore.activeTenantCode
+  const loginLocation = buildLoginLocation(routeSnapshot, activeTenantCodeSnapshot)
+  showError(message || '未登录或登录已过期')
   userStore.resetState()
 
   if (routeSnapshot.path === '/login') {

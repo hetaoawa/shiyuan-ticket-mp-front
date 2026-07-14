@@ -30,7 +30,9 @@
 
       <!-- 用户列表 -->
       <el-table :data="userList" v-loading="loading" border>
-        <el-table-column prop="id" label="用户ID" width="120" show-overflow-tooltip />
+        <el-table-column label="用户ID" width="140">
+          <template #default="{ row }"><OpaqueId :value="row.id" /></template>
+        </el-table-column>
         <el-table-column prop="username" label="用户名" width="120" />
         <el-table-column prop="nickname" label="昵称" width="120" />
         <el-table-column prop="phone" label="手机号" width="130">
@@ -43,14 +45,14 @@
             {{ row.email || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="externalUserId" label="外部用户ID" width="130" show-overflow-tooltip>
+        <el-table-column label="外部用户ID" width="150">
           <template #default="{ row }">
-            {{ row.externalUserId || '-' }}
+            <OpaqueId :value="row.externalUserId" />
           </template>
         </el-table-column>
-        <el-table-column prop="tenantId" label="租户ID" width="100">
+        <el-table-column label="租户ID" width="150">
           <template #default="{ row }">
-            {{ getTenantLabel(row.tenantId) }}
+            <OpaqueId :value="row.tenantId" :label="getTenantLabel(row.tenantId)" />
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="80" align="center">
@@ -153,6 +155,7 @@ import { getUserList, createUser, updateUser, deleteUser, resetPassword, getUser
 import { getRoleList } from '@/api/admin/role'
 import { formatTenantLabel } from '@/utils/tenant'
 import { useUserStore } from '@/stores/user'
+import OpaqueId from '@/components/OpaqueId.vue'
 
 const userStore = useUserStore()
 const loading = ref(false)

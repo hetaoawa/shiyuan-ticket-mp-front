@@ -18,6 +18,7 @@
           >
             <el-form-item prop="tenantCode">
               <el-select
+                ref="tenantSelectRef"
                 v-model="loginForm.tenantCode"
                 data-testid="tenant-select"
                 placeholder="请选择租户"
@@ -25,6 +26,7 @@
                 :loading="tenantOptionsLoading"
                 :disabled="tenantOptionsLoading || !!tenantOptionsError || tenantOptions.length === 0"
                 @change="handleTenantChange"
+                @keyup.enter.stop="focusUsername"
               >
                 <el-option
                   v-for="option in tenantOptions"
@@ -57,21 +59,26 @@
             </div>
             <el-form-item prop="username">
               <el-input
+                ref="usernameInputRef"
                 v-model="loginForm.username"
                 data-testid="username-input"
                 placeholder="请输入用户名"
                 :prefix-icon="User"
+                autocomplete="username"
+                @keyup.enter.prevent="focusPassword"
               />
             </el-form-item>
 
             <el-form-item prop="password">
               <el-input
+                ref="passwordInputRef"
                 v-model="loginForm.password"
                 data-testid="password-input"
                 type="password"
                 placeholder="请输入密码"
                 :prefix-icon="Lock"
                 show-password
+                autocomplete="current-password"
                 @keyup.enter="handleLogin"
               />
             </el-form-item>
@@ -102,12 +109,13 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { getLoginTenantOptions } from '@/api/auth'
 import { parseRememberedLogin } from '@/utils/remembered-login'
 import {
+  extractTenantFromRedirect,
   firstQueryString,
   resolvePostLoginTarget,
   selectInitialTenant,
@@ -120,6 +128,9 @@ const route = useRoute()
 const userStore = useUserStore()
 
 const loginFormRef = ref(null)
+const tenantSelectRef = ref(null)
+const usernameInputRef = ref(null)
+const passwordInputRef = ref(null)
 const rememberAccount = ref(false)
 const rememberedTenantCode = ref('')
 const tenantOptions = ref([])
@@ -165,12 +176,15 @@ function loadSavedLogin() {
 }
 
 function replaceLoginTenant(tenantCode) {
-  if (!tenantCode || route.query.tenant === tenantCode) return
+  if (!tenantCode || firstQueryString(route.query.tenant) === tenantCode) return
+
+  const normalizedQuery = { ...route.query }
+  delete normalizedQuery.tenantCode
 
   void router.replace({
     path: '/login',
     query: {
-      ...route.query,
+      ...normalizedQuery,
       tenant: tenantCode,
     },
   })
@@ -185,6 +199,7 @@ function applyTenantSelection(selection) {
 function applyInitialTenant() {
   const selection = selectInitialTenant({
     requestedTenant: firstQueryString(route.query.tenant),
+    redirectTenant: extractTenantFromRedirect(firstQueryString(route.query.redirect)),
     rememberedTenant: rememberedTenantCode.value,
     options: tenantOptions.value,
   })
@@ -195,6 +210,7 @@ function applyInitialTenant() {
 function applyRequestedTenant(requestedTenant) {
   applyTenantSelection(selectInitialTenant({
     requestedTenant,
+    redirectTenant: extractTenantFromRedirect(firstQueryString(route.query.redirect)),
     rememberedTenant: rememberedTenantCode.value,
     options: tenantOptions.value,
   }))
@@ -215,7 +231,18 @@ async function loadTenantOptions() {
     console.error('租户列表加载失败:', error)
   } finally {
     tenantOptionsLoading.value = false
+    await nextTick()
+    tenantSelectRef.value?.focus()
   }
+}
+
+function focusUsername() {
+  if (!loginForm.tenantCode) return
+  usernameInputRef.value?.focus()
+}
+
+function focusPassword() {
+  passwordInputRef.value?.focus()
 }
 
 function handleTenantChange() {

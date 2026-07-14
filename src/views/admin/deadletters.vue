@@ -6,8 +6,12 @@
       </template>
 
       <el-table :data="tableData" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="eventId" label="事件ID" width="200" show-overflow-tooltip />
+        <el-table-column label="ID" width="140">
+          <template #default="{ row }"><OpaqueId :value="row.id" /></template>
+        </el-table-column>
+        <el-table-column label="事件ID" width="200">
+          <template #default="{ row }"><OpaqueId :value="row.eventId" /></template>
+        </el-table-column>
         <el-table-column prop="eventType" label="事件类型" width="180" />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
@@ -58,6 +62,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { getDeadLetters, retryDeadLetter, ignoreDeadLetter } from '@/api/admin'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import OpaqueId from '@/components/OpaqueId.vue'
 
 const loading = ref(false)
 const tableData = ref([])

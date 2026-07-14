@@ -29,7 +29,12 @@ test('401 handling snapshots the complete route before resetting state and repla
     /import\s*\{\s*buildLoginLocation\s*\}\s*from\s*['"]@\/utils\/tenant-login['"]/,
   )
   assert.match(handle401, /const\s+routeSnapshot\s*=\s*\{[\s\S]*?path:[\s\S]*?fullPath:[\s\S]*?query:/)
-  assert.match(handle401, /const\s+loginLocation\s*=\s*buildLoginLocation\(routeSnapshot\)/)
+  assert.match(handle401, /const\s+activeTenantCodeSnapshot\s*=\s*userStore\.activeTenantCode/)
+  assert.match(
+    handle401,
+    /const\s+loginLocation\s*=\s*buildLoginLocation\(routeSnapshot,\s*activeTenantCodeSnapshot\)/,
+  )
+  assert.ok(handle401.indexOf('activeTenantCodeSnapshot') < handle401.indexOf('userStore.resetState()'))
   assert.match(handle401, /router\.replace\(loginLocation\)/)
   assert.doesNotMatch(handle401, /router\.push\(/)
 })

@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 
 import {
   buildLoginLocation,
+  extractTenantFromRedirect,
   firstQueryString,
   resolvePostLoginTarget,
   resolveSafeRedirect,
@@ -26,6 +27,26 @@ test('URL tenant wins when it is available', () => {
   assert.deepEqual(
     selectInitialTenant({ requestedTenant: 'acme', rememberedTenant: 'old', options }),
     { tenantCode: 'acme', requestedUnavailable: false },
+  )
+})
+
+test('redirect tenant wins over remembered and platform tenants', () => {
+  assert.deepEqual(
+    selectInitialTenant({
+      redirectTenant: 'acme',
+      rememberedTenant: 'old',
+      options,
+    }),
+    { tenantCode: 'acme', requestedUnavailable: false },
+  )
+  assert.deepEqual(
+    selectInitialTenant({
+      requestedTenant: 'old',
+      redirectTenant: 'acme',
+      rememberedTenant: 'platform',
+      options,
+    }),
+    { tenantCode: 'old', requestedUnavailable: false },
   )
 })
 
@@ -86,6 +107,20 @@ test('login location preserves the complete deep link and normalizes tenant arra
         redirect: '/workorder/detail/123?tenantCode=acme&foo=bar#timeline',
       },
     },
+  )
+})
+
+test('login location uses one tenant query field and preserves active tenant before reset', () => {
+  assert.deepEqual(
+    buildLoginLocation({ path: '/profile', fullPath: '/profile', query: {} }, ' AcMe '),
+    {
+      path: '/login',
+      query: { tenant: 'acme', redirect: '/profile' },
+    },
+  )
+  assert.equal(
+    extractTenantFromRedirect('/workorder/list?tenantCode=legacy&foo=bar#top'),
+    'legacy',
   )
 })
 
@@ -241,15 +276,27 @@ test('login view keeps unavailable explicit tenants visible and canonically sync
   assert.match(source, /loginForm\.tenantCode\s*=\s*selection\.tenantCode/)
   assert.match(source, /requestedTenantUnavailable\.value\s*=\s*selection\.requestedUnavailable/)
   assert.match(source, /function\s+handleTenantChange\([^)]*\)\s*\{[\s\S]*requestedTenantUnavailable\.value\s*=\s*false[\s\S]*replaceLoginTenant/)
-  assert.match(source, /function\s+replaceLoginTenant\([^)]*\)\s*\{[\s\S]*router\.replace\(\{[\s\S]*path:\s*['"]\/login['"][\s\S]*query:\s*\{[\s\S]*\.\.\.route\.query[\s\S]*tenant:\s*tenantCode/)
+  assert.match(source, /function\s+replaceLoginTenant\([^)]*\)\s*\{[\s\S]*delete\s+normalizedQuery\.tenantCode[\s\S]*router\.replace\(\{[\s\S]*path:\s*['"]\/login['"][\s\S]*query:\s*\{[\s\S]*\.\.\.normalizedQuery[\s\S]*tenant:\s*tenantCode/)
 })
 
 test('login view follows normalized tenant query changes and uses replace after login', async () => {
   const source = await readLoginView()
 
   assert.match(source, /watch\(\s*\(\)\s*=>\s*firstQueryString\(route\.query\.tenant\)/)
-  assert.match(source, /route\.query\.tenant\s*===\s*tenantCode/)
+  assert.match(source, /firstQueryString\(route\.query\.tenant\)\s*===\s*tenantCode/)
   assert.match(source, /resolvePostLoginTarget\(route\.query\.redirect,\s*loginForm\.tenantCode\)/)
   assert.match(source, /router\.replace\(resolvePostLoginTarget\(route\.query\.redirect,\s*loginForm\.tenantCode\)\)/)
   assert.doesNotMatch(source, /router\.push\(/)
+})
+
+test('login controls expose password-manager hints and keyboard focus progression', async () => {
+  const source = await readLoginView()
+
+  assert.match(source, /autocomplete="username"/)
+  assert.match(source, /autocomplete="current-password"/)
+  assert.match(source, /ref="tenantSelectRef"[\s\S]*?@keyup\.enter\.stop="focusUsername"/)
+  assert.match(source, /ref="usernameInputRef"[\s\S]*?@keyup\.enter\.prevent="focusPassword"/)
+  assert.match(source, /ref="passwordInputRef"[\s\S]*?@keyup\.enter="handleLogin"/)
+  assert.match(source, /tenantOptionsLoading\.value\s*=\s*false[\s\S]*?await\s+nextTick\(\)[\s\S]*?tenantSelectRef\.value\?\.focus\(\)/)
+  assert.match(source, /redirectTenant:\s*extractTenantFromRedirect\(firstQueryString\(route\.query\.redirect\)\)/)
 })

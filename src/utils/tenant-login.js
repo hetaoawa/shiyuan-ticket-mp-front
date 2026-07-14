@@ -29,7 +29,12 @@ function validTenantOptions(options) {
   return validOptions
 }
 
-export function selectInitialTenant({ requestedTenant, rememberedTenant, options } = {}) {
+export function selectInitialTenant({
+  requestedTenant,
+  redirectTenant,
+  rememberedTenant,
+  options,
+} = {}) {
   const availableOptions = validTenantOptions(options)
   const findTenant = (tenantCode) => {
     const normalizedCode = normalizeTenantCode(tenantCode)
@@ -40,6 +45,13 @@ export function selectInitialTenant({ requestedTenant, rememberedTenant, options
     const requestedOption = findTenant(requestedTenant)
     return requestedOption
       ? { tenantCode: requestedOption.tenantCode, requestedUnavailable: false }
+      : { tenantCode: '', requestedUnavailable: true }
+  }
+
+  if (typeof redirectTenant === 'string' && redirectTenant.length > 0) {
+    const redirectOption = findTenant(redirectTenant)
+    return redirectOption
+      ? { tenantCode: redirectOption.tenantCode, requestedUnavailable: false }
       : { tenantCode: '', requestedUnavailable: true }
   }
 
@@ -59,12 +71,29 @@ export function selectInitialTenant({ requestedTenant, rememberedTenant, options
   }
 }
 
-export function buildLoginLocation(route) {
+export function extractTenantFromRedirect(value) {
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) return ''
+
+  try {
+    const url = new URL(value, 'https://local.invalid')
+    return url.searchParams.get('tenant') || url.searchParams.get('tenantCode') || ''
+  } catch {
+    return ''
+  }
+}
+
+export function buildLoginLocation(route, activeTenantCode = '') {
+  const redirect = typeof route?.fullPath === 'string' ? route.fullPath : '/'
+  const tenant = normalizeTenantCode(activeTenantCode)
+    || firstQueryString(route?.query?.tenant)
+    || firstQueryString(route?.query?.tenantCode)
+    || extractTenantFromRedirect(redirect)
+
   return {
     path: '/login',
     query: {
-      tenant: firstQueryString(route?.query?.tenantCode),
-      redirect: route?.fullPath,
+      ...(tenant ? { tenant } : {}),
+      redirect,
     },
   }
 }

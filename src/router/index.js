@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { canAccessRoute } from '@/utils/permission'
 import { buildLoginLocation } from '@/utils/tenant-login'
+import { findFirstMenuPath } from '@/utils/menu'
 
 const staticRoutes = [
   {
@@ -14,7 +15,6 @@ const staticRoutes = [
     path: '/',
     name: 'Layout',
     component: () => import('@/layout/index.vue'),
-    redirect: '/workorder/list',
     children: [
       {
         path: 'workorder/list',
@@ -112,6 +112,17 @@ function canAccessTargetRoute(to, userStore) {
   }))
 }
 
+function resolveRootPath(userStore) {
+  if (userStore.globalAdmin && !userStore.activeTenantId) return '/system/tenant'
+
+  return findFirstMenuPath(userStore.menuTree, (path) => {
+    if (path === '/system/tenant'
+      && !userStore.globalAdmin
+      && !userStore.roles.includes('SYSTEM_ADMIN')) return false
+    return canAccessTargetRoute(router.resolve(path), userStore)
+  }) || '/profile'
+}
+
 router.beforeEach(async (to, from, next) => {
   document.title = to.meta.title ? `${to.meta.title} - 中台工单流转系统` : '中台工单流转系统'
 
@@ -142,6 +153,10 @@ router.beforeEach(async (to, from, next) => {
       }
       await userStore.getMenuTree()
       userStore.setRouterLoaded(true)
+      if (to.path === '/') {
+        next({ path: resolveRootPath(userStore), replace: true })
+        return
+      }
       if (to.path === '/system/tenant'
         && !userStore.globalAdmin
         && !userStore.roles.includes('SYSTEM_ADMIN')) {
@@ -162,6 +177,11 @@ router.beforeEach(async (to, from, next) => {
 
   if (userStore.globalAdmin && !userStore.activeTenantId && to.path !== '/system/tenant') {
     next('/system/tenant')
+    return
+  }
+
+  if (to.path === '/') {
+    next({ path: resolveRootPath(userStore), replace: true })
     return
   }
 
