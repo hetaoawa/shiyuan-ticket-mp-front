@@ -2,7 +2,7 @@
   <div class="file-upload" v-loading="loading">
     <!-- 图片列表（两种模式共用） -->
     <div class="file-list" v-if="fileList.length > 0">
-      <div v-for="(file, index) in fileList" :key="file.fileId" class="file-item-wrapper">
+      <div v-for="(file, index) in fileList" :key="file.localId || file.fileId" class="file-item-wrapper">
         <div class="file-item" @click="handlePreviewByIndex(index)">
           <img v-if="file.url" :src="file.url" class="file-thumbnail" />
           <div v-else class="file-placeholder">
@@ -11,7 +11,7 @@
           <div class="file-name">{{ file.name }}</div>
         </div>
         <el-icon
-          v-if="!readonly"
+          v-if="!readonly && !disabled"
           class="file-delete-btn"
           @click.stop="handleDelete(file)"
         >
@@ -22,7 +22,7 @@
 
     <!-- 上传按钮（非只读模式） -->
     <el-upload
-      v-if="!readonly && fileList.length < limit"
+      v-if="!readonly && !disabled && fileList.length < limit"
       :show-file-list="false"
       :http-request="handleUpload"
       :before-upload="beforeUpload"
@@ -55,10 +55,17 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { Plus, ArrowLeft, ArrowRight, Document, Delete } from '@element-plus/icons-vue'
 import { getPresignUrl, confirmUpload, getDownloadUrl, getFilesByBiz, deleteFile } from '@/api/file'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useUserStore } from '@/stores/user'
+import {
+  createDeferredUploadTask,
+  runDeferredUploadTask,
+} from '@/utils/deferred-upload'
+
+const userStore = useUserStore()
 
 const props = defineProps({
   modelValue: {
@@ -84,6 +91,10 @@ const props = defineProps({
   deferred: {
     type: Boolean,
     default: false
+  },
+  disabled: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -96,6 +107,38 @@ const previewList = ref([])
 const previewIndex = ref(0)
 const loading = ref(false)
 const pendingFiles = ref([])
+const uploadTasks = new Map()
+let localIdSequence = 0
+
+function createLocalId() {
+  localIdSequence += 1
+  const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${localIdSequence}`
+  return `local-${random}`
+}
+
+function releasePreviewUrl(file) {
+  if (file?.previewUrl) URL.revokeObjectURL(file.previewUrl)
+}
+
+function reset() {
+  pendingFiles.value.forEach(releasePreviewUrl)
+  pendingFiles.value = []
+  fileList.value = []
+  uploadTasks.clear()
+  emit('update:modelValue', [])
+}
+
+onBeforeUnmount(() => {
+  pendingFiles.value.forEach(releasePreviewUrl)
+})
+
+function acquireFileOperation() {
+  const releaseTenantContext = userStore.acquireTenantContextOperation()
+  if (!releaseTenantContext) {
+    ElMessage.warning('租户切换正在进行，请稍后重试')
+  }
+  return releaseTenantContext
+}
 
 onMounted(() => {
   if (props.bizId) {
@@ -182,15 +225,18 @@ async function handleUpload(options) {
   const file = options.file
 
   if (props.deferred) {
-    const previewUrl = URL.createObjectURL(file)
+    const localId = createLocalId()
+    const objectUrl = URL.createObjectURL(file)
     pendingFiles.value.push({
+      localId,
       file,
       name: file.name,
-      url: previewUrl
+      previewUrl: objectUrl,
     })
     fileList.value.push({
+      localId,
       name: file.name,
-      url: previewUrl,
+      url: objectUrl,
       fileId: null,
       pending: true
     })
@@ -198,6 +244,11 @@ async function handleUpload(options) {
     return
   }
 
+  const releaseTenantContext = acquireFileOperation()
+  if (!releaseTenantContext) {
+    options.onError?.(new Error('租户切换正在进行，请稍后重试'))
+    return
+  }
   try {
     const presignRes = await getPresignUrl({
       originalName: file.name,
@@ -209,11 +260,14 @@ async function handleUpload(options) {
 
     const { fileId, uploadUrl } = presignRes.data
 
-    await fetch(uploadUrl, {
+    const uploadResponse = await fetch(uploadUrl, {
       method: 'PUT',
       body: file,
       headers: { 'Content-Type': file.type }
     })
+    if (!uploadResponse.ok) {
+      throw new Error(`对象存储上传失败（HTTP ${uploadResponse.status}）`)
+    }
 
     await confirmUpload(fileId)
 
@@ -232,66 +286,97 @@ async function handleUpload(options) {
     ElMessage.success('上传成功')
   } catch (error) {
     console.error('上传失败', error)
-    options.onError(error)
+    options.onError?.(error)
+  } finally {
+    releaseTenantContext()
   }
 }
 
-async function uploadAll(bizId) {
-  if (!bizId || pendingFiles.value.length === 0) return
+async function uploadOne(workOrderId, pending) {
+  const taskKey = `${String(workOrderId)}::${pending.localId}`
+  let task = uploadTasks.get(taskKey)
+  if (!task) {
+    task = createDeferredUploadTask(workOrderId, pending.localId)
+    uploadTasks.set(taskKey, task)
+  }
 
-  loading.value = true
-  const uploadedIds = []
-
-  try {
-    for (const pending of pendingFiles.value) {
-      const file = pending.file
-      const presignRes = await getPresignUrl({
+  const file = pending.file
+  return runDeferredUploadTask(task, {
+    file,
+    presign: async () => {
+      const response = await getPresignUrl({
         originalName: file.name,
         contentType: file.type,
         fileSize: file.size,
         bizType: props.bizType,
-        bizId: bizId
+        bizId: String(workOrderId),
       })
-
-      const { fileId, uploadUrl } = presignRes.data
-
-      await fetch(uploadUrl, {
+      return response.data
+    },
+    put: async (uploadUrl) => {
+      const response = await fetch(uploadUrl, {
         method: 'PUT',
         body: file,
-        headers: { 'Content-Type': file.type }
+        headers: { 'Content-Type': file.type },
       })
+      if (!response.ok) {
+        const error = new Error(`对象存储上传失败（HTTP ${response.status}）`)
+        error.presignInvalid = [400, 401, 403, 404, 410].includes(response.status)
+        throw error
+      }
+    },
+    confirm: confirmUpload,
+    isDefinitelyUnconfirmed: (error, currentTask) => {
+      const code = error?.response?.data?.errorCode || error?.response?.data?.code
+      return code === 'FILE_NOT_UPLOADED'
+        || code === 'UPLOAD_OBJECT_NOT_FOUND'
+        || (currentTask.presignInvalid && error?.response?.status === 400)
+    },
+  })
+}
 
-      await confirmUpload(fileId)
+async function uploadAll(bizIds) {
+  const workOrderIds = (Array.isArray(bizIds) ? bizIds : [bizIds])
+    .filter((id) => id !== null && id !== undefined && String(id))
+    .map(String)
+  if (workOrderIds.length === 0 || pendingFiles.value.length === 0) {
+    return { succeeded: [], failed: [] }
+  }
 
-      const downloadRes = await getDownloadUrl(fileId)
-      const downloadUrl = downloadRes.data?.downloadUrl || ''
-
-      const index = fileList.value.findIndex(f => f.name === file.name && f.pending)
-      if (index !== -1) {
-        fileList.value[index] = {
-          name: file.name,
-          url: downloadUrl,
-          fileId: fileId,
-          pending: false
+  loading.value = true
+  const succeeded = []
+  const failed = []
+  try {
+    for (const workOrderId of workOrderIds) {
+      for (const pending of pendingFiles.value) {
+        try {
+          const task = await uploadOne(workOrderId, pending)
+          succeeded.push(task)
+        } catch (error) {
+          failed.push({ workOrderId, localId: pending.localId, error })
         }
       }
-
-      uploadedIds.push(fileId)
     }
-
-    pendingFiles.value = []
+    if (failed.length > 0) {
+      const error = new Error(`${failed.length} 个附件任务上传失败`)
+      error.failedTasks = failed
+      throw error
+    }
+    const uploadedIds = succeeded.map((task) => task.fileId)
     emit('update:modelValue', uploadedIds)
     emit('upload-success', uploadedIds)
-    ElMessage.success(`${uploadedIds.length} 个文件上传成功`)
-  } catch (error) {
-    console.error('文件上传失败', error)
-    throw error
+    ElMessage.success(`${succeeded.length} 个附件任务上传成功`)
+    return { succeeded, failed }
   } finally {
     loading.value = false
   }
 }
 
-defineExpose({ uploadAll })
+function getUploadTasks() {
+  return [...uploadTasks.values()].map((task) => ({ ...task }))
+}
+
+defineExpose({ uploadAll, reset, getUploadTasks })
 
 async function handleDelete(file) {
   try {
@@ -301,22 +386,36 @@ async function handleDelete(file) {
       type: 'warning',
     })
 
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('确认删除失败', error)
+    }
+    return
+  }
+
+  let releaseTenantContext = null
+  try {
     if (file.pending) {
-      pendingFiles.value = pendingFiles.value.filter(f => f.name !== file.name)
-      if (file.url) URL.revokeObjectURL(file.url)
+      const pending = pendingFiles.value.find(f => f.localId === file.localId)
+      releasePreviewUrl(pending)
+      pendingFiles.value = pendingFiles.value.filter(f => f.localId !== file.localId)
     } else if (file.fileId != null) {
+      releaseTenantContext = acquireFileOperation()
+      if (!releaseTenantContext) return
       await deleteFile(file.fileId)
     }
 
-    fileList.value = fileList.value.filter(f => f.fileId !== file.fileId || f.name !== file.name)
+    fileList.value = fileList.value.filter(f => (file.localId
+      ? f.localId !== file.localId
+      : f.fileId !== file.fileId))
     const newValue = props.modelValue.filter(id => id !== file.fileId)
     emit('update:modelValue', newValue)
 
     ElMessage.success('删除成功')
   } catch (error) {
-    if (error !== 'cancel') {
-      console.error('删除失败', error)
-    }
+    console.error('删除失败', error)
+  } finally {
+    releaseTenantContext?.()
   }
 }
 
@@ -499,5 +598,20 @@ function nextImage() {
   margin-top: 12px;
   color: #606266;
   font-size: 14px;
+}
+
+:global(html.is-mobile-view .file-item-wrapper),
+:global(html.is-mobile-view .upload-trigger) {
+  width: min(38vw, 132px);
+  height: min(38vw, 132px);
+}
+
+:global(html.is-mobile-view .file-thumbnail),
+:global(html.is-mobile-view .file-placeholder) {
+  height: calc(min(38vw, 132px) - 28px);
+}
+
+:global(html.is-mobile-view .preview-container) {
+  min-height: min(70vh, 360px);
 }
 </style>

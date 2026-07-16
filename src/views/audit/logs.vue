@@ -30,10 +30,16 @@
         </el-form-item>
       </el-form>
 
+      <div v-if="isMobileView" class="mobile-table-hint">日志字段较多，可在下方区域左右滑动查看完整内容。</div>
+      <div :class="{ 'mobile-table-scroll': isMobileView }">
       <el-table :data="tableData" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="180" show-overflow-tooltip />
+        <el-table-column label="ID" width="180">
+          <template #default="{ row }"><OpaqueId :value="row.id" /></template>
+        </el-table-column>
         <el-table-column prop="bizType" label="业务类型" width="120" />
-        <el-table-column prop="bizId" label="业务ID" width="180" show-overflow-tooltip />
+        <el-table-column label="业务ID" width="180">
+          <template #default="{ row }"><OpaqueId :value="row.bizId" /></template>
+        </el-table-column>
         <el-table-column prop="action" label="操作" width="125">
           <template #default="{ row }">
             <el-tag>{{ row.action }}</el-tag>
@@ -49,13 +55,14 @@
         </el-table-column>
         <el-table-column prop="createdAt" label="操作时间" width="180" />
       </el-table>
+      </div>
 
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
         :page-sizes="[10, 20, 50]"
         :total="pagination.total"
-        layout="total, sizes, prev, pager, next, jumper"
+        :layout="isMobileView ? 'total, prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
         @size-change="handleSizeChange"
         @current-change="loadData"
       />
@@ -66,6 +73,8 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { getAuditLogs } from '@/api/audit'
+import OpaqueId from '@/components/OpaqueId.vue'
+import { isMobileView } from '@/utils/device'
 
 const loading = ref(false)
 const tableData = ref([])

@@ -2,7 +2,15 @@
   <div class="workorder-list">
     <!-- 搜索区域 -->
     <el-card class="search-card" shadow="never">
-      <el-form :model="searchForm" inline>
+      <el-button
+        v-if="isMobileView"
+        class="mobile-filter-toggle"
+        plain
+        @click="mobileFilterVisible = !mobileFilterVisible"
+      >
+        {{ mobileFilterVisible ? '收起筛选' : `筛选条件${activeFilterCount ? `（${activeFilterCount}）` : ''}` }}
+      </el-button>
+      <el-form v-show="!isMobileView || mobileFilterVisible" :model="searchForm" inline class="search-form">
         <el-form-item label="状态">
           <el-select v-model="searchForm.status" placeholder="全部状态" clearable class="status-select">
             <el-option label="待处理" value="PENDING" />
@@ -68,11 +76,22 @@
       </template>
 
       <!-- 表格 -->
-      <el-table :data="tableData" v-loading="loading" stripe @selection-change="handleSelectionChange">
+      <el-table v-if="!isMobileView" :data="tableData" v-loading="loading" stripe @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" />
-        <el-table-column prop="id" label="工单ID" width="180" show-overflow-tooltip />
+        <el-table-column label="工单ID" width="180">
+          <template #default="{ row }"><OpaqueId :value="row.id" /></template>
+        </el-table-column>
+        <el-table-column label="发起人" min-width="150">
+          <template #default="{ row }">
+            <span v-if="row.submitterName">{{ row.submitterName }}</span>
+            <OpaqueId v-else-if="row.submitterId" :value="row.submitterId" :label="`用户 ${row.submitterId}`" />
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="trackingNo" label="物流单号" width="150" show-overflow-tooltip />
+        <el-table-column label="物流单号" width="150">
+          <template #default="{ row }"><OpaqueId :value="row.trackingNo" /></template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">
@@ -91,7 +110,11 @@
           <template #default="{ row }">
             <span v-if="row.assigneeName">{{ row.assigneeName }}</span>
             <span v-else-if="row.assigneeRoleName">{{ row.assigneeRoleName }}</span>
-            <span v-else-if="row.assigneeId">用户 {{ row.assigneeId }}</span>
+            <OpaqueId
+              v-else-if="row.assigneeId"
+              :value="row.assigneeId"
+              :label="`用户 ${row.assigneeId}`"
+            />
             <span v-else-if="row.assigneeRole">{{ row.assigneeRole }}</span>
             <span v-else style="color: #909399;">未派发</span>
           </template>
@@ -106,13 +129,65 @@
         </el-table-column>
       </el-table>
 
+      <div v-else v-loading="loading" class="mobile-record-list">
+        <el-empty v-if="!loading && tableData.length === 0" description="暂无工单" />
+        <el-card v-for="row in tableData" :key="row.id" shadow="never" class="mobile-record-card">
+          <div class="mobile-record-header">
+            <div>
+              <div class="mobile-record-title">{{ row.title || '未命名工单' }}</div>
+              <div class="mobile-record-subtitle">工单 <OpaqueId :value="row.id" /></div>
+            </div>
+            <el-tag :type="getStatusType(row.status)">{{ getStatusLabel(row.status) }}</el-tag>
+          </div>
+          <div class="mobile-record-grid">
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">物流单号</span>
+              <span class="mobile-record-value"><OpaqueId :value="row.trackingNo" /></span>
+            </div>
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">优先级</span>
+              <span class="mobile-record-value">{{ getPriorityLabel(row.priority) }}</span>
+            </div>
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">处理人</span>
+              <span class="mobile-record-value">{{ getAssigneeLabel(row) }}</span>
+            </div>
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">创建时间</span>
+              <span class="mobile-record-value">{{ row.createdAt || '-' }}</span>
+            </div>
+            <div class="mobile-record-field is-wide">
+              <span class="mobile-record-label">发起人</span>
+              <span class="mobile-record-value">{{ getSubmitterLabel(row) }}</span>
+            </div>
+          </div>
+          <div class="mobile-record-actions">
+            <el-checkbox
+              v-hasPermi="['workorder:assign']"
+              :model-value="isMobileRowSelected(row)"
+              @change="(checked) => toggleMobileSelection(row, checked)"
+            >选择</el-checkbox>
+            <el-button type="primary" @click="handleDetail(row)">查看详情</el-button>
+          </div>
+        </el-card>
+      </div>
+
+      <div v-if="isMobileView && selectedRows.length > 0" class="mobile-batch-bar">
+        <span>已选 {{ selectedRows.length }} 项</span>
+        <el-button
+          v-hasPermi="['workorder:assign']"
+          type="warning"
+          @click="showBatchAssignDialog"
+        >批量派发</el-button>
+      </div>
+
       <!-- 分页 -->
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
         :page-sizes="[10, 20, 50]"
         :total="pagination.total"
-        layout="total, sizes, prev, pager, next, jumper"
+        :layout="isMobileView ? 'total, prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
         @size-change="handleSizeChange"
         @current-change="handlePageChange"
       />
@@ -122,103 +197,15 @@
     <el-dialog
       v-model="showCreateDialog"
       title="创建工单"
-      width="700px"
+      width="min(960px, 92vw)"
       :close-on-click-modal="false"
-      @closed="handleDialogClosed"
+      destroy-on-close
     >
-      <!-- 智能解析区域 -->
-      <el-card class="nlp-section" shadow="never">
-        <template #header>
-          <span>智能解析</span>
-        </template>
-        <el-input
-          v-model="nlpText"
-          type="textarea"
-          :rows="4"
-          placeholder="建议按照示例输入:运单号+售后类型（如退回、催件）格式填写。&#10;示例：YT7621300222910 退回&#10;更址：请按运单号+更址+新地址格式填写。示例：YT7621300222910 更址 小李18200000000上海市青浦区盈港东路6679号"
-        />
-        <el-button
-          type="primary"
-          class="nlp-btn"
-          size="small"
-          :loading="nlpLoading"
-          @click="handleNlpParse"
-        >
-          智能识别
-        </el-button>
-      </el-card>
-
-      <!-- 工单表单 -->
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-width="100px"
-        class="workorder-form"
-      >
-        <el-form-item label="工单类型" prop="type">
-          <el-select v-model="form.type" placeholder="请选择工单类型">
-            <el-option label="改地址" value="CHANGE_ADDRESS" />
-            <el-option label="拦截" value="INTERCEPT" />
-            <el-option label="破损" value="DAMAGE" />
-            <el-option label="丢失" value="LOST" />
-            <el-option label="其他" value="OTHER" />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="物流单号" prop="trackingNo">
-          <el-input v-model="form.trackingNo" placeholder="请输入物流单号" />
-        </el-form-item>
-
-        <el-form-item label="工单标题" prop="title">
-          <el-input v-model="form.title" placeholder="请输入工单标题" />
-        </el-form-item>
-
-        <el-form-item label="工单描述" prop="description">
-          <el-input
-            v-model="form.description"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入工单详细描述"
-          />
-        </el-form-item>
-
-        <el-form-item label="优先级" prop="priority">
-          <el-radio-group v-model="form.priority">
-            <el-radio :value="1">低</el-radio>
-            <el-radio :value="2">中</el-radio>
-            <el-radio :value="3">高</el-radio>
-          </el-radio-group>
-        </el-form-item>
-
-        <el-form-item label="诉求目标" prop="targetAddress">
-          <el-input
-            v-model="form.targetAddress"
-            placeholder="如改地址的目标地址"
-          />
-        </el-form-item>
-
-        <el-form-item label="举证截图">
-          <FileUpload ref="fileUploadRef" v-model="form.fileIds" :limit="5" deferred />
-        </el-form-item>
-
-        <el-divider content-position="left">外部货主信息（选填）</el-divider>
-
-        <el-form-item label="外部发送人ID" prop="senderStaffId">
-          <el-input v-model="form.senderStaffId" placeholder="货主侧发送人ID（选填）" />
-        </el-form-item>
-
-        <el-form-item label="外部群ID" prop="conversationId">
-          <el-input v-model="form.conversationId" placeholder="货主侧群ID（选填）" />
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="showCreateDialog = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="handleSubmit">
-          提交工单
-        </el-button>
-      </template>
+      <WorkOrderCreateEditor
+        show-cancel
+        @cancel="showCreateDialog = false"
+        @completed="handleCreateCompleted"
+      />
     </el-dialog>
 
     <!-- 批量派发弹窗 -->
@@ -267,49 +254,43 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getWorkOrderList, createWorkOrder, batchAssignWorkOrder, exportWorkOrders, aiParse } from '@/api/workorder'
-import { getSimpleUserList } from '@/api/admin/user'
-import { getRoleList } from '@/api/admin/role'
+import {
+  getWorkOrderList,
+  batchAssignWorkOrder,
+  exportWorkOrders,
+  getAssignmentUserOptions,
+  getAssignmentRoleOptions,
+} from '@/api/workorder'
+import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 import { Download, Promotion, Plus } from '@element-plus/icons-vue'
-import FileUpload from '@/components/FileUpload.vue'
+import WorkOrderCreateEditor from '@/components/WorkOrderCreateEditor.vue'
+import OpaqueId from '@/components/OpaqueId.vue'
+import { isMobileView } from '@/utils/device'
 
 const router = useRouter()
+const userStore = useUserStore()
+const canAssignWorkOrder = computed(() => userStore.permissions.includes('workorder:assign'))
 
 const loading = ref(false)
 const tableData = ref([])
 const showCreateDialog = ref(false)
 const selectedRows = ref([])
+const mobileFilterVisible = ref(false)
 const batchAssignVisible = ref(false)
 const batchLoading = ref(false)
 const batchAssignForm = reactive({ assignType: 'user', assigneeId: '', assigneeRoleCode: '' })
 const userList = ref([])
 const warehouseRoleOptions = ref([])
 
-// 创建工单相关
-const formRef = ref(null)
-const fileUploadRef = ref(null)
-const nlpText = ref('')
-const nlpLoading = ref(false)
-const submitLoading = ref(false)
-
-const form = reactive({
-  type: '',
-  trackingNo: '',
-  title: '',
-  description: '',
-  priority: 2,
-  targetAddress: '',
-  senderStaffId: '',
-  conversationId: '',
-  fileIds: [],
-})
-
-const rules = {
-  title: [{ required: true, message: '请输入工单标题', trigger: 'blur' }],
-  priority: [{ required: true, message: '请选择优先级', trigger: 'change' }],
+function acquireWorkOrderOperation() {
+  const releaseTenantContext = userStore.acquireTenantContextOperation()
+  if (!releaseTenantContext) {
+    ElMessage.warning('租户切换正在进行，请稍后重试')
+  }
+  return releaseTenantContext
 }
 
 // 搜索表单
@@ -325,6 +306,12 @@ const pagination = reactive({
   pageSize: 10,
   total: 0,
 })
+
+const activeFilterCount = computed(() => [
+  searchForm.status,
+  searchForm.trackingNo,
+  searchForm.createdTimeRange?.length === 2,
+].filter(Boolean).length)
 
 // 状态标签类型
 function getStatusType(status) {
@@ -360,6 +347,20 @@ function getPriorityLabel(priority) {
   return map[priority] || '未知'
 }
 
+function getAssigneeLabel(row) {
+  if (row.assigneeName) return row.assigneeName
+  if (row.assigneeRoleName) return row.assigneeRoleName
+  if (row.assigneeId) return `用户 ${row.assigneeId}`
+  if (row.assigneeRole) return row.assigneeRole
+  return '未派发'
+}
+
+function getSubmitterLabel(row) {
+  if (row.submitterName) return row.submitterName
+  if (row.submitterId) return `用户 ${row.submitterId}`
+  return '-'
+}
+
 // 加载数据
 function buildSearchParams(includePage = true) {
   const params = {}
@@ -385,6 +386,7 @@ async function loadData() {
     const res = await getWorkOrderList(params)
     tableData.value = res.data || []
     pagination.total = Number(res.total) || 0
+    selectedRows.value = []
   } catch (error) {
     // 错误已在 request.js 中处理
   } finally {
@@ -395,6 +397,7 @@ async function loadData() {
 // 搜索
 function handleSearch() {
   pagination.page = 1
+  if (isMobileView.value) mobileFilterVisible.value = false
   loadData()
 }
 
@@ -427,8 +430,21 @@ function handleSelectionChange(rows) {
   selectedRows.value = rows
 }
 
+function isMobileRowSelected(row) {
+  return selectedRows.value.some((item) => String(item.id) === String(row.id))
+}
+
+function toggleMobileSelection(row, checked) {
+  if (checked && !isMobileRowSelected(row)) {
+    selectedRows.value = [...selectedRows.value, row]
+  } else if (!checked) {
+    selectedRows.value = selectedRows.value.filter((item) => String(item.id) !== String(row.id))
+  }
+}
+
 // 显示批量派发弹窗
-function showBatchAssignDialog() {
+async function showBatchAssignDialog() {
+  if (!canAssignWorkOrder.value || !await loadAssignmentOptions()) return
   batchAssignForm.assignType = 'user'
   batchAssignForm.assigneeId = ''
   batchAssignForm.assigneeRoleCode = ''
@@ -451,6 +467,8 @@ async function handleBatchAssign() {
     ElMessage.warning('请选择角色')
     return
   }
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return
   batchLoading.value = true
   try {
     const data = {
@@ -464,11 +482,12 @@ async function handleBatchAssign() {
     await batchAssignWorkOrder(data)
     ElMessage.success(`成功派发 ${selectedRows.value.length} 个工单`)
     batchAssignVisible.value = false
-    loadData()
+    await loadData()
   } catch (error) {
-    // 错误已在 request.js 中处理
+    console.error('批量派发工单失败', error)
   } finally {
     batchLoading.value = false
+    releaseTenantContext()
   }
 }
 
@@ -490,110 +509,39 @@ async function handleExport() {
   }
 }
 
-// NLP 智能解析
-async function handleNlpParse() {
-  if (!nlpText.value.trim()) {
-    ElMessage.warning('请输入物流诉求文本')
-    return
-  }
+async function handleCreateCompleted() {
+  showCreateDialog.value = false
+  await loadData()
+}
 
-  nlpLoading.value = true
+// 加载当前租户内的派发候选项
+async function loadAssignmentOptions() {
+  if (!canAssignWorkOrder.value) return false
+  const releaseTenantContext = acquireWorkOrderOperation()
+  if (!releaseTenantContext) return false
   try {
-    const res = await aiParse(nlpText.value)
-    const data = res.data
-
-    form.type = data.type || 'OTHER'
-    form.trackingNo = data.trackingNo || ''
-    form.title = data.title || ''
-    form.description = data.description || ''
-    form.targetAddress = data.targetAddress || ''
-    form.priority = data.priority || 2
-
-    ElMessage.success('智能识别完成，请检查并补充信息')
+    const [userResult, roleResult] = await Promise.allSettled([
+      getAssignmentUserOptions(),
+      getAssignmentRoleOptions(),
+    ])
+    const failedResult = [userResult, roleResult].find((result) => result.status === 'rejected')
+    if (failedResult) throw failedResult.reason
+    const userResponse = userResult.value
+    const roleResponse = roleResult.value
+    userList.value = userResponse.data || []
+    warehouseRoleOptions.value = (roleResponse.data || [])
+      .filter((role) => role.roleCode === 'WAREHOUSE_ADMIN')
+    return true
   } catch (error) {
-    console.error('智能解析失败', error)
+    console.error('加载派发候选项失败', error)
+    return false
   } finally {
-    nlpLoading.value = false
-  }
-}
-
-// 获取工单类型标签
-function getOrderTypeLabel(type) {
-  const map = {
-    CHANGE_ADDRESS: '改地址',
-    INTERCEPT: '拦截',
-    DAMAGE: '破损',
-    LOST: '丢失',
-    OTHER: '其他',
-  }
-  return map[type] || '其他'
-}
-
-// 提交表单
-async function handleSubmit() {
-  const valid = await formRef.value.validate().catch(() => false)
-  if (!valid) return
-
-  submitLoading.value = true
-  try {
-    const data = {
-      title: form.title,
-      description: form.description,
-      trackingNo: form.trackingNo,
-      targetAddress: form.targetAddress,
-      priority: form.priority,
-    }
-    if (form.type) data.type = form.type
-    if (form.senderStaffId) data.senderStaffId = form.senderStaffId
-    if (form.conversationId) data.conversationId = form.conversationId
-    const res = await createWorkOrder(data)
-
-    const workOrderId = res.data?.id
-    if (fileUploadRef.value && workOrderId) {
-      await fileUploadRef.value.uploadAll(workOrderId)
-    }
-
-    ElMessage.success('工单创建成功')
-    showCreateDialog.value = false
-    loadData()
-  } catch (error) {
-    // 错误已在 request.js 中处理
-  } finally {
-    submitLoading.value = false
-  }
-}
-
-// 弹窗关闭时重置表单
-function handleDialogClosed() {
-  formRef.value?.resetFields()
-  nlpText.value = ''
-}
-
-// 加载用户列表
-async function loadUserList() {
-  try {
-    const res = await getSimpleUserList()
-    userList.value = res.data || []
-  } catch {
-    // 忽略用户列表加载错误
-  }
-}
-
-// 加载云仓侧角色列表
-async function loadWarehouseRoles() {
-  try {
-    const res = await getRoleList()
-    const allRoles = res.data || []
-    warehouseRoleOptions.value = allRoles.filter(r => r.roleCode === 'WAREHOUSE_ADMIN')
-  } catch {
-    // 忽略角色列表加载错误
+    releaseTenantContext()
   }
 }
 
 onMounted(() => {
   loadData()
-  loadUserList()
-  loadWarehouseRoles()
 })
 </script>
 
@@ -624,20 +572,42 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
-.nlp-section {
-  margin-bottom: 16px;
-  background-color: #f5f7fa;
-}
-
-.nlp-btn {
-  margin-top: 8px;
-}
-
-.workorder-form {
-  margin-top: 8px;
-}
-
 .status-select {
   width: 180px;
+}
+
+.search-form {
+  margin-top: 12px;
+}
+
+:global(html.is-mobile-view .workorder-list .card-header) {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+:global(html.is-mobile-view .workorder-list .header-actions) {
+  width: 100%;
+}
+
+:global(html.is-mobile-view .workorder-list .header-actions .el-button) {
+  flex: 1 1 130px;
+}
+
+.mobile-batch-bar {
+  position: sticky;
+  bottom: 4px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #f3d19e;
+  border-radius: 8px;
+  background: #fdf6ec;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  color: #b88230;
+  font-size: 13px;
 }
 </style>

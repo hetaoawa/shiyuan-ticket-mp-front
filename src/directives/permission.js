@@ -1,20 +1,16 @@
 import { useUserStore } from '@/stores/user'
+import { hasPermission } from '@/utils/permission'
+
+function removeElement(el) {
+  el.parentNode?.removeChild(el)
+}
 
 function checkPermission(el, binding) {
   const { value } = binding
   const userStore = useUserStore()
 
   if (value && value instanceof Array && value.length > 0) {
-    const permissions = value
-    const hasPermission = permissions.some((permission) => {
-      return userStore.permissions.includes(permission)
-    })
-
-    if (!hasPermission) {
-      el.style.display = 'none'
-    } else {
-      el.style.display = ''
-    }
+    if (!hasPermission(value, userStore.permissions)) removeElement(el)
   }
 }
 
@@ -28,11 +24,7 @@ function checkRole(el, binding) {
       return userStore.roles.includes(role)
     })
 
-    if (!hasRolePermission) {
-      el.style.display = 'none'
-    } else {
-      el.style.display = ''
-    }
+    if (!hasRolePermission) removeElement(el)
   }
 }
 

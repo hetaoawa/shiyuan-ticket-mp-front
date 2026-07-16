@@ -1,15 +1,19 @@
 <template>
   <el-watermark :content="watermarkContent">
-    <el-container class="layout-container">
+    <el-container class="layout-container" :class="{ 'mobile-layout': isMobileView }">
       <!-- 侧边栏 -->
-      <el-aside :width="isCollapse ? '64px' : '220px'" class="layout-aside">
+      <el-aside
+        :width="asideWidth"
+        class="layout-aside"
+        :class="{ 'is-mobile-open': mobileMenuOpen }"
+      >
         <div class="logo-container">
           <img src="@/assets/project-logo.png" alt="Logo" class="logo-img" />
-          <span v-show="!isCollapse" class="logo-text">中台工单流转系统</span>
+          <span v-show="!menuCollapsed" class="logo-text">中台工单流转系统</span>
         </div>
         <el-menu
         :default-active="activeMenu"
-        :collapse="isCollapse"
+        :collapse="menuCollapsed"
         :unique-opened="true"
         router
         class="layout-menu"
@@ -17,48 +21,18 @@
         text-color="#bfcbd9"
         active-text-color="#409eff"
       >
-        <template v-for="menu in menuRoutes" :key="menu.id">
-          <!-- 单级菜单（无子菜单） -->
-          <el-menu-item
-            v-if="!menu.children || menu.children.length === 0"
-            :index="menu.path"
-          >
-            <el-icon>
-              <component :is="getIconComponent(menu.icon)" />
-            </el-icon>
-            <template #title>{{ menu.menuName }}</template>
-          </el-menu-item>
-
-          <!-- 多级菜单 -->
-          <el-sub-menu v-else :index="String(menu.id)">
-            <template #title>
-              <el-icon>
-                <component :is="getIconComponent(menu.icon)" />
-              </el-icon>
-              <span>{{ menu.menuName }}</span>
-            </template>
-            <el-menu-item
-              v-for="child in menu.children"
-              :key="child.id"
-              :index="child.path"
-            >
-              <el-icon>
-                <component :is="getIconComponent(child.icon)" />
-              </el-icon>
-              <template #title>{{ child.menuName }}</template>
-            </el-menu-item>
-          </el-sub-menu>
-        </template>
+        <SidebarMenu :menus="menuRoutes" :get-icon-component="getIconComponent" />
       </el-menu>
     </el-aside>
+    <div v-if="isMobileView && mobileMenuOpen" class="aside-mask" @click="closeMobileMenu" />
 
     <!-- 主内容区 -->
-    <el-container>
+    <el-container class="layout-body">
       <!-- 顶部导航 -->
       <el-header class="layout-header">
         <div class="header-left">
           <el-icon class="collapse-btn" @click="toggleCollapse">
-            <Fold v-if="!isCollapse" />
+            <Fold v-if="isMobileView ? mobileMenuOpen : !isCollapse" />
             <Expand v-else />
           </el-icon>
           <el-breadcrumb separator="/">
@@ -67,8 +41,32 @@
               {{ item.meta?.title }}
             </el-breadcrumb-item>
           </el-breadcrumb>
+          <span v-if="isMobileView" class="mobile-page-title">{{ currentPageTitle }}</span>
         </div>
         <div class="header-right">
+          <div class="version-summary">
+            <span :title="`前端 ${frontendVersionLabel}`">前端 {{ frontendVersionLabel }}</span>
+            <span :title="`后端 ${backendVersionLabel}`">后端 {{ backendVersionLabel }}</span>
+          </div>
+          <div class="tenant-context">
+            <span class="tenant-label">当前租户</span>
+            <el-select
+              v-if="userStore.globalAdmin"
+              v-model="selectedTenantId"
+              placeholder="请选择业务租户"
+              class="tenant-select"
+              :disabled="userStore.tenantSwitching || userStore.tenantContextBusy"
+              @change="handleTenantChange"
+            >
+              <el-option
+                v-for="tenant in userStore.availableTenants"
+                :key="tenant.id"
+                :label="tenant.tenantName"
+                :value="tenant.id"
+              />
+            </el-select>
+            <el-tag v-else type="info">{{ userStore.activeTenantName || '未选择' }}</el-tag>
+          </div>
           <el-dropdown @command="handleCommand">
             <span class="user-info">
               <el-avatar :size="32" :icon="UserFilled" />
@@ -76,8 +74,9 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item v-if="canManageTenantAdmins" command="tenants">租户管理</el-dropdown-item>
                 <el-dropdown-item command="profile">个人中心</el-dropdown-item>
-                <el-dropdown-item command="settings">系统设置</el-dropdown-item>
+                <el-dropdown-item v-if="canViewSettings" command="settings">系统设置</el-dropdown-item>
                 <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -99,10 +98,15 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { ElMessageBox } from 'element-plus'
+import { getSystemVersion } from '@/api/version'
+import { formatVersionLabel, frontendVersionLabel } from '@/utils/version'
+import { containsMenuPath } from '@/utils/menu'
+import { isMobileView } from '@/utils/device'
+import SidebarMenu from '@/components/SidebarMenu.vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Fold, Expand, Document, List, Plus, Setting, User, Lock,
   Menu, Warning, Monitor, UserFilled, Search
@@ -111,6 +115,37 @@ import {
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const selectedTenantId = ref(userStore.activeTenantId)
+const canManageTenantAdmins = computed(() => userStore.globalAdmin
+  || userStore.roles.includes('SYSTEM_ADMIN'))
+const canViewSettings = computed(() => userStore.permissions.includes('settings:view'))
+const canViewPlatformSsl = computed(() => userStore.globalAdmin
+  && userStore.permissions.includes('platform:ssl:manage'))
+const backendVersionInfo = ref({ version: 'unknown', commit: 'unknown' })
+const backendVersionLabel = computed(() => formatVersionLabel(
+  backendVersionInfo.value.version,
+  backendVersionInfo.value.commit,
+))
+
+async function loadBackendVersion() {
+  try {
+    const response = await getSystemVersion()
+    backendVersionInfo.value = {
+      version: response.data?.version,
+      commit: response.data?.commit,
+    }
+  } catch (error) {
+    console.warn('加载后端版本信息失败', error)
+  }
+}
+
+onMounted(() => {
+  void loadBackendVersion()
+})
+
+watch(() => userStore.activeTenantId, (value) => {
+  selectedTenantId.value = value
+}, { immediate: true })
 
 const watermarkContent = computed(() => [
   `用户ID：${String(userStore.userId || '')}`,
@@ -118,6 +153,12 @@ const watermarkContent = computed(() => [
 ])
 
 const isCollapse = ref(false)
+const mobileMenuOpen = ref(false)
+const menuCollapsed = computed(() => isMobileView.value ? false : isCollapse.value)
+const asideWidth = computed(() => {
+  if (isMobileView.value) return '260px'
+  return isCollapse.value ? '64px' : '220px'
+})
 
 // 当前激活的菜单
 const activeMenu = computed(() => {
@@ -128,6 +169,7 @@ const activeMenu = computed(() => {
 const breadcrumbs = computed(() => {
   return route.matched.filter((item) => item.meta?.title)
 })
+const currentPageTitle = computed(() => route.meta?.title || '工单系统')
 
 // 图标映射
 const iconComponentMap = {
@@ -145,68 +187,53 @@ const iconComponentMap = {
   'file-search': Search
 }
 
-// 静态回退菜单（API 无数据时使用）
-const fallbackMenus = [
-  {
-    id: 'workorder',
-    menuName: '工单管理',
-    icon: 'file-text',
-    children: [
-      { id: 'workorder-list', menuName: '工单列表', path: '/workorder/list', icon: 'list' },
-      { id: 'workorder-create', menuName: '创建工单', path: '/workorder/create', icon: 'plus' }
-    ]
-  },
-  {
-    id: 'system',
-    menuName: '系统管理',
-    icon: 'setting',
-    children: [
-      { id: 'system-user', menuName: '用户管理', path: '/system/user', icon: 'user' },
-      { id: 'system-role', menuName: '角色管理', path: '/system/role', icon: 'team' },
-      { id: 'system-menu', menuName: '菜单管理', path: '/system/menu', icon: 'menu' },
-      { id: 'system-deadletter', menuName: '死信管理', path: '/system/deadletter', icon: 'warning' },
-      { id: 'system-audit', menuName: '审计日志', path: '/system/audit', icon: 'monitor' }
-    ]
-  }
-]
-
-// 菜单数据（基于 API，修复重复路径；API 无数据时回退静态菜单）
+// 菜单数据完全以后端授权结果为准；空菜单保持为空，不能回退到特权菜单。
 const menuRoutes = computed(() => {
-  const menus = userStore.menuTree
-  if (!menus || menus.length === 0) return fallbackMenus
-  // 过滤 BUTTON 节点（按钮权限不应显示在侧边栏）
-  const visibleMenus = menus
-    .filter(parent => parent.menuType !== 'BUTTON')
-    .map(parent => {
-      if (!parent.children || parent.children.length === 0) return parent
-      return {
-        ...parent,
-        children: parent.children.filter(child => child.menuType !== 'BUTTON')
-      }
-    })
-    // 过滤掉没有子菜单的 DIR 节点（避免显示空目录）
-    .filter(parent => {
-      if (parent.menuType === 'DIR' && parent.children && parent.children.length === 0) return false
-      return true
-    })
-  // 修复后端返回重复路径的 bug（如角色管理路径与用户管理相同）
-  const usedPaths = new Set()
-  return visibleMenus.map(parent => {
-    if (!parent.children || parent.children.length === 0) return parent
-    return {
-      ...parent,
-      children: parent.children.map(child => {
-        let path = child.path
-        if (usedPaths.has(path)) {
-          // 路径重复，使用 menuCode 生成唯一路径
-          path = '/' + child.menuCode.replace(/:/g, '/')
-        }
-        usedPaths.add(path)
-        return { ...child, path }
-      })
-    }
-  })
+  if (userStore.globalAdmin && !userStore.activeTenantId) {
+    return withPlatformSslMenu([{
+      id: 'system-tenant',
+      menuName: '租户管理',
+      menuType: 'MENU',
+      path: '/system/tenant',
+      icon: 'setting',
+      children: [],
+    }])
+  }
+  const menus = userStore.menuTree || []
+  return withPlatformSslMenu(withTenantAdminMenu(menus))
 })
+
+function withPlatformSslMenu(menus) {
+  if (!canViewPlatformSsl.value || containsMenuPath(menus, '/system/platform-ssl')) return menus
+  return [
+    ...menus,
+    {
+      id: 'platform-ssl',
+      menuName: '平台 SSL',
+      menuType: 'MENU',
+      path: '/system/platform-ssl',
+      icon: 'lock',
+      children: [],
+    },
+  ]
+}
+
+function withTenantAdminMenu(menus) {
+  if (!canManageTenantAdmins.value) return menus
+  const alreadyPresent = containsMenuPath(menus, '/system/tenant')
+  if (alreadyPresent) return menus
+  return [
+    {
+      id: 'system-tenant',
+      menuName: '租户管理',
+      menuType: 'MENU',
+      path: '/system/tenant',
+      icon: 'setting',
+      children: [],
+    },
+    ...menus,
+  ]
+}
 
 // 获取图标组件
 function getIconComponent(iconName) {
@@ -215,12 +242,28 @@ function getIconComponent(iconName) {
 
 // 切换折叠
 function toggleCollapse() {
+  if (isMobileView.value) {
+    mobileMenuOpen.value = !mobileMenuOpen.value
+    return
+  }
   isCollapse.value = !isCollapse.value
 }
 
+function closeMobileMenu() {
+  mobileMenuOpen.value = false
+}
+
+watch(() => route.fullPath, closeMobileMenu)
+
+watch(isMobileView, (mobile) => {
+  if (!mobile) mobileMenuOpen.value = false
+})
+
 // 处理下拉命令
 async function handleCommand(command) {
-  if (command === 'profile') {
+  if (command === 'tenants') {
+    router.push('/system/tenant')
+  } else if (command === 'profile') {
     router.push('/profile')
   } else if (command === 'settings') {
     router.push('/settings')
@@ -238,17 +281,42 @@ async function handleCommand(command) {
     }
   }
 }
+
+async function handleTenantChange(tenantId) {
+  if (userStore.tenantSwitching || userStore.tenantContextBusy) {
+    selectedTenantId.value = userStore.activeTenantId
+    return
+  }
+  if (!tenantId || tenantId === userStore.activeTenantId) return
+  try {
+    const tenant = userStore.availableTenants.find((item) => item.id === String(tenantId))
+    await userStore.switchTenant(tenant || tenantId, {
+      onUnrecoverable: () => router.replace('/login'),
+    })
+    ElMessage.success(`已切换至 ${userStore.activeTenantName}`)
+    await router.replace({
+      path: '/workorder/list',
+      query: { tenant: userStore.activeTenantCode },
+    })
+  } catch (error) {
+    selectedTenantId.value = userStore.activeTenantId
+    console.error('切换租户失败', error)
+  }
+}
 </script>
 
 <style scoped>
 .layout-container {
   height: 100vh;
+  width: 100%;
+  overflow: hidden;
 }
 
 .layout-aside {
   background-color: #304156;
   transition: width 0.3s;
   overflow: hidden;
+  z-index: 1001;
 }
 
 .logo-container {
@@ -275,6 +343,12 @@ async function handleCommand(command) {
 
 .layout-menu {
   border-right: none;
+  height: calc(100vh - 60px);
+  overflow-y: auto;
+}
+
+.layout-body {
+  min-width: 0;
 }
 
 .layout-header {
@@ -305,6 +379,31 @@ async function handleCommand(command) {
 .header-right {
   display: flex;
   align-items: center;
+  gap: 18px;
+}
+
+.version-summary {
+  display: flex;
+  flex-direction: column;
+  color: #909399;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.tenant-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tenant-label {
+  color: #606266;
+  font-size: 13px;
+}
+
+.tenant-select {
+  width: 190px;
 }
 
 .user-info {
@@ -322,6 +421,74 @@ async function handleCommand(command) {
 .layout-main {
   background-color: #f0f2f5;
   padding: 20px;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.aside-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.mobile-layout .layout-aside {
+  position: fixed;
+  inset: 0 auto 0 0;
+  transform: translateX(-100%);
+  box-shadow: 6px 0 18px rgba(0, 0, 0, 0.18);
+}
+
+.mobile-layout .layout-aside.is-mobile-open {
+  transform: translateX(0);
+}
+
+.mobile-layout .layout-header {
+  height: auto;
+  min-height: 56px;
+  padding: 8px 12px;
+  gap: 10px;
+}
+
+.mobile-layout .header-left {
+  min-width: 0;
+  gap: 10px;
+}
+
+.mobile-page-title {
+  max-width: 96px;
+  overflow: hidden;
+  color: #303133;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-layout .header-left :deep(.el-breadcrumb) {
+  display: none;
+}
+
+.mobile-layout .header-right {
+  min-width: 0;
+  flex: 1;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mobile-layout .version-summary,
+.mobile-layout .tenant-label,
+.mobile-layout .username {
+  display: none;
+}
+
+.mobile-layout .tenant-select {
+  width: min(42vw, 160px);
+}
+
+.mobile-layout .layout-main {
+  padding: 10px;
 }
 
 .fade-enter-active,

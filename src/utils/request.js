@@ -3,6 +3,7 @@ import JSONbig from 'json-bigint'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import router from '@/router'
+import { buildLoginLocation } from '@/utils/tenant-login'
 
 // --- 最大同时错误提示数量 ---
 const MAX_ERROR_MESSAGES = 3
@@ -39,12 +40,34 @@ let isRedirectingToLogin = false
 function handle401(message) {
   if (isRedirectingToLogin) return
   isRedirectingToLogin = true
-  showError(message || '未登录或登录已过期')
+  const currentRoute = router.currentRoute.value
+  const routeSnapshot = {
+    path: currentRoute.path,
+    fullPath: currentRoute.fullPath,
+    query: { ...currentRoute.query },
+  }
   const userStore = useUserStore()
+  const activeTenantCodeSnapshot = userStore.activeTenantCode
+  const loginLocation = buildLoginLocation(routeSnapshot, activeTenantCodeSnapshot)
+  showError(message || '未登录或登录已过期')
   userStore.resetState()
-  const currentPath = router.currentRoute.value.path
-  if (currentPath !== '/login') {
-    router.push(`/login?redirect=${currentPath}`)
+
+  if (routeSnapshot.path === '/login') {
+    isRedirectingToLogin = false
+    return
+  }
+
+  try {
+    router.replace(loginLocation)
+      .catch((error) => {
+        console.error('跳转登录页失败', error)
+      })
+      .finally(() => {
+        isRedirectingToLogin = false
+      })
+  } catch (error) {
+    console.error('跳转登录页失败', error)
+    isRedirectingToLogin = false
   }
 }
 
@@ -86,7 +109,6 @@ service.interceptors.response.use(
   (response) => {
     // 如果是 blob 类型响应（文件下载），直接返回
     if (response.config.responseType === 'blob') {
-      isRedirectingToLogin = false
       return response.data
     }
 
@@ -94,13 +116,11 @@ service.interceptors.response.use(
 
     // 分页响应直接返回
     if (res.total !== undefined) {
-      isRedirectingToLogin = false
       return res
     }
 
     // 业务状态码判断
     if (res.code === 200) {
-      isRedirectingToLogin = false
       return res
     }
 

@@ -5,9 +5,15 @@
         <span>死信队列管理</span>
       </template>
 
+      <div v-if="isMobileView" class="mobile-table-hint">死信字段较多，可在下方区域左右滑动查看；操作列位于最右侧。</div>
+      <div :class="{ 'mobile-table-scroll': isMobileView }">
       <el-table :data="tableData" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="eventId" label="事件ID" width="200" show-overflow-tooltip />
+        <el-table-column label="ID" width="140">
+          <template #default="{ row }"><OpaqueId :value="row.id" /></template>
+        </el-table-column>
+        <el-table-column label="事件ID" width="200">
+          <template #default="{ row }"><OpaqueId :value="row.eventId" /></template>
+        </el-table-column>
         <el-table-column prop="eventType" label="事件类型" width="180" />
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
@@ -19,7 +25,7 @@
         <el-table-column prop="attempts" label="重试次数" width="80" />
         <el-table-column prop="lastError" label="最后错误" min-width="200" show-overflow-tooltip />
         <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="150" :fixed="isMobileView ? false : 'right'">
           <template #default="{ row }">
             <el-button
               v-hasPermi="['deadletter:retry']"
@@ -40,13 +46,14 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
 
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
         :page-sizes="[10, 20, 50]"
         :total="pagination.total"
-        layout="total, sizes, prev, pager, next, jumper"
+        :layout="isMobileView ? 'total, prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
         @size-change="handleSizeChange"
         @current-change="loadData"
       />
@@ -58,6 +65,8 @@
 import { ref, reactive, onMounted } from 'vue'
 import { getDeadLetters, retryDeadLetter, ignoreDeadLetter } from '@/api/admin'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import OpaqueId from '@/components/OpaqueId.vue'
+import { isMobileView } from '@/utils/device'
 
 const loading = ref(false)
 const tableData = ref([])

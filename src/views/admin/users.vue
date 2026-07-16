@@ -12,7 +12,13 @@
       </template>
 
       <!-- 搜索栏 -->
-      <el-form :inline="true" :model="searchForm" class="search-form">
+      <el-button
+        v-if="isMobileView"
+        class="mobile-filter-toggle"
+        plain
+        @click="mobileFilterVisible = !mobileFilterVisible"
+      >{{ mobileFilterVisible ? '收起筛选' : '筛选用户' }}</el-button>
+      <el-form v-show="!isMobileView || mobileFilterVisible" :inline="true" :model="searchForm" class="search-form">
         <el-form-item label="用户名">
           <el-input v-model="searchForm.username" placeholder="请输入用户名" clearable />
         </el-form-item>
@@ -29,8 +35,10 @@
       </el-form>
 
       <!-- 用户列表 -->
-      <el-table :data="userList" v-loading="loading" border>
-        <el-table-column prop="id" label="用户ID" width="120" show-overflow-tooltip />
+      <el-table v-if="!isMobileView" :data="userList" v-loading="loading" border>
+        <el-table-column label="用户ID" width="140">
+          <template #default="{ row }"><OpaqueId :value="row.id" /></template>
+        </el-table-column>
         <el-table-column prop="username" label="用户名" width="120" />
         <el-table-column prop="nickname" label="昵称" width="120" />
         <el-table-column prop="phone" label="手机号" width="130">
@@ -43,14 +51,14 @@
             {{ row.email || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="externalUserId" label="外部用户ID" width="130" show-overflow-tooltip>
+        <el-table-column label="外部用户ID" width="150">
           <template #default="{ row }">
-            {{ row.externalUserId || '-' }}
+            <OpaqueId :value="row.externalUserId" />
           </template>
         </el-table-column>
-        <el-table-column prop="tenantId" label="租户ID" width="100">
+        <el-table-column label="租户ID" width="150">
           <template #default="{ row }">
-            {{ row.tenantId ?? '-' }}
+            <OpaqueId :value="row.tenantId" :label="getTenantLabel(row.tenantId)" />
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="80" align="center">
@@ -70,13 +78,55 @@
         </el-table-column>
       </el-table>
 
+      <div v-else v-loading="loading" class="mobile-record-list">
+        <el-empty v-if="!loading && userList.length === 0" description="暂无用户" />
+        <el-card v-for="row in userList" :key="row.id" shadow="never" class="mobile-record-card">
+          <div class="mobile-record-header">
+            <div>
+              <div class="mobile-record-title">{{ row.nickname || row.username }}</div>
+              <div class="mobile-record-subtitle">{{ row.username }} · <OpaqueId :value="row.id" /></div>
+            </div>
+            <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
+              {{ row.status === 1 ? '启用' : '禁用' }}
+            </el-tag>
+          </div>
+          <div class="mobile-record-grid">
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">手机号</span>
+              <span class="mobile-record-value">{{ row.phone || '-' }}</span>
+            </div>
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">创建时间</span>
+              <span class="mobile-record-value">{{ row.createdAt || '-' }}</span>
+            </div>
+            <div class="mobile-record-field is-wide">
+              <span class="mobile-record-label">邮箱</span>
+              <span class="mobile-record-value">{{ row.email || '-' }}</span>
+            </div>
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">外部用户 ID</span>
+              <span class="mobile-record-value"><OpaqueId :value="row.externalUserId" /></span>
+            </div>
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">租户</span>
+              <span class="mobile-record-value">{{ getTenantLabel(row.tenantId) }}</span>
+            </div>
+          </div>
+          <div class="mobile-record-actions">
+            <el-button type="primary" plain @click="showEditDialog(row)" v-hasPermi="['user:update']">编辑</el-button>
+            <el-button plain @click="showResetPwdDialog(row)" v-hasPermi="['user:update']">重置密码</el-button>
+            <el-button type="danger" plain @click="handleDelete(row)" v-hasPermi="['user:delete']">删除</el-button>
+          </div>
+        </el-card>
+      </div>
+
       <!-- 分页 -->
       <el-pagination
         v-if="total > 0"
         v-model:current-page="searchForm.pageNum"
         v-model:page-size="searchForm.pageSize"
         :total="total"
-        layout="total, sizes, prev, pager, next, jumper"
+        :layout="isMobileView ? 'total, prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
         style="margin-top: 16px; justify-content: flex-end;"
@@ -102,14 +152,7 @@
           <el-input v-model="userForm.externalUserId" placeholder="外部系统用户ID（选填）" clearable />
         </el-form-item>
         <el-form-item label="租户">
-          <el-select v-model="userForm.tenantId" placeholder="请选择租户" clearable filterable allow-create>
-            <el-option
-              v-for="t in tenantOptions"
-              :key="t.id"
-              :label="t.name"
-              :value="t.id"
-            />
-          </el-select>
+          <el-input :model-value="getTenantLabel(userForm.tenantId)" disabled />
         </el-form-item>
         <el-form-item v-if="!isEdit" label="密码" prop="password">
           <el-input v-model="userForm.password" type="password" placeholder="请输入密码" />
@@ -158,14 +201,19 @@ import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getUserList, createUser, updateUser, deleteUser, resetPassword, getUserRoles, assignRoles } from '@/api/admin/user'
 import { getRoleList } from '@/api/admin/role'
-import { getTenantOptions } from '@/api/admin/tenant'
+import { formatTenantLabel } from '@/utils/tenant'
+import { useUserStore } from '@/stores/user'
+import OpaqueId from '@/components/OpaqueId.vue'
+import { isMobileView } from '@/utils/device'
 
+const userStore = useUserStore()
 const loading = ref(false)
 const submitLoading = ref(false)
 const userList = ref([])
 const total = ref(0)
 const roleOptions = ref([])
-const tenantOptions = ref([])
+const mobileFilterVisible = ref(false)
+const RESERVED_ADMIN_ROLES = new Set(['SYSTEM_ADMIN', 'GLOBAL_SYSTEM_ADMIN'])
 
 const searchForm = reactive({
   username: '',
@@ -228,24 +276,28 @@ async function loadUserList() {
 async function loadRoleOptions() {
   try {
     const res = await getRoleList()
-    roleOptions.value = res.data || []
+    roleOptions.value = (res.data || []).filter(role => !RESERVED_ADMIN_ROLES.has(role.roleCode))
   } catch (error) {
     console.error('加载角色列表失败', error)
   }
 }
 
-// 加载租户选项
-async function loadTenantOptions() {
-  try {
-    const res = await getTenantOptions()
-    tenantOptions.value = res.data || []
-  } catch (error) {
-    console.error('加载租户列表失败', error)
-  }
+function getTenantLabel(tenantId) {
+  if (tenantId === null || tenantId === undefined) return '-'
+  const id = String(tenantId)
+  const name = id === userStore.activeTenantId ? userStore.activeTenantName : null
+  return formatTenantLabel(name, id)
+}
+
+function getActiveTenantId() {
+  return userStore.activeTenantId === null || userStore.activeTenantId === undefined
+    ? null
+    : String(userStore.activeTenantId)
 }
 
 function handleSearch() {
   searchForm.pageNum = 1
+  if (isMobileView.value) mobileFilterVisible.value = false
   loadUserList()
 }
 
@@ -284,14 +336,17 @@ async function showEditDialog(row) {
     email: row.email,
     externalUserId: row.externalUserId || '',
     status: row.status,
-    tenantId: row.tenantId ?? null,
+    tenantId: row.tenantId === null || row.tenantId === undefined
+      ? getActiveTenantId()
+      : String(row.tenantId),
     roleIds: []
   })
   
   // 获取用户角色
   try {
     const res = await getUserRoles(row.id)
-    userForm.roleIds = res.data || []
+    const assignableIds = new Set(roleOptions.value.map(role => String(role.id)))
+    userForm.roleIds = (res.data || []).filter(roleId => assignableIds.has(String(roleId)))
   } catch {
     // 忽略错误
   }
@@ -315,7 +370,7 @@ function resetForm() {
     externalUserId: '',
     password: '',
     status: 1,
-    tenantId: null,
+    tenantId: getActiveTenantId(),
     roleIds: []
   })
 }
@@ -326,6 +381,8 @@ async function handleSubmit() {
   
   submitLoading.value = true
   try {
+    const assignableIds = new Set(roleOptions.value.map(role => String(role.id)))
+    const assignableRoleIds = userForm.roleIds.filter(roleId => assignableIds.has(String(roleId)))
     if (isEdit.value) {
       const updatePayload = {
         nickname: userForm.nickname,
@@ -337,7 +394,7 @@ async function handleSubmit() {
       }
       await updateUser(userForm.id, updatePayload)
       // 分配角色（始终调用，空列表表示清除所有角色）
-      await assignRoles(userForm.id, { role_ids: userForm.roleIds })
+      await assignRoles(userForm.id, { role_ids: assignableRoleIds })
       ElMessage.success('更新成功')
     } else {
       await createUser({
@@ -349,7 +406,7 @@ async function handleSubmit() {
         password: userForm.password,
         status: userForm.status,
         tenantId: userForm.tenantId,
-        roleIds: userForm.roleIds,
+        roleIds: assignableRoleIds,
       })
       ElMessage.success('创建成功')
     }
@@ -393,7 +450,6 @@ async function handleDelete(row) {
 onMounted(() => {
   loadUserList()
   loadRoleOptions()
-  loadTenantOptions()
 })
 </script>
 
@@ -410,5 +466,9 @@ onMounted(() => {
 
 .status-select {
   width: 140px;
+}
+
+:global(html.is-mobile-view .user-manage .search-form) {
+  margin-top: 12px;
 }
 </style>

@@ -1,6 +1,10 @@
+import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import request from '@/utils/request'
+import * as authApi from '@/api/auth'
+import { getTenantOptions } from '@/api/admin/tenant'
+import { normalizeAuthContext, synchronizeTenantSwitch } from '@/utils/auth'
+import { createTenantContextOperationGate } from '@/utils/tenant-context-gate'
+import { normalizeBackendMenus } from '@/utils/menu'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('token') || '')
@@ -9,90 +13,170 @@ export const useUserStore = defineStore('user', () => {
   const nickname = ref('')
   const phone = ref('')
   const email = ref('')
-  const tenantId = ref(null)
   const externalUserId = ref(null)
+  const principalTenantId = ref(null)
+  const activeTenantId = ref(null)
+  const activeTenantCode = ref(sessionStorage.getItem('activeTenantCode') || '')
+  const activeTenantName = ref(null)
+  const globalAdmin = ref(false)
+  const availableTenants = ref([])
   const roles = ref([])
   const permissions = ref([])
   const menuTree = ref([])
   const routerLoaded = ref(false)
+  const tenantSwitching = ref(false)
+  const tenantContextOperationCount = ref(0)
+  const tenantId = computed(() => activeTenantId.value)
+  const tenantContextBusy = computed(() => tenantContextOperationCount.value > 0)
+  const tenantContextGate = createTenantContextOperationGate((state) => {
+    tenantSwitching.value = state.tenantSwitching
+    tenantContextOperationCount.value = state.operationCount
+  })
 
-  function setToken(val) {
-    token.value = val
-    if (val) {
-      localStorage.setItem('token', val)
-    } else {
-      localStorage.removeItem('token')
+  function setToken(value) {
+    token.value = value || ''
+    if (token.value) localStorage.setItem('token', token.value)
+    else localStorage.removeItem('token')
+  }
+
+  function setActiveTenantCode(value) {
+    activeTenantCode.value = typeof value === 'string' ? value.trim().toLowerCase() : ''
+    if (activeTenantCode.value) sessionStorage.setItem('activeTenantCode', activeTenantCode.value)
+    else sessionStorage.removeItem('activeTenantCode')
+  }
+
+  function applyAuthContext(response) {
+    const context = normalizeAuthContext(response)
+    principalTenantId.value = context.principalTenantId
+    activeTenantId.value = context.activeTenantId
+    activeTenantName.value = context.activeTenantName
+    if (typeof response?.activeTenantCode === 'string') {
+      setActiveTenantCode(response.activeTenantCode)
     }
+    globalAdmin.value = context.globalAdmin
   }
 
   async function login(loginData) {
-    // backend expects form-urlencoded for login
-    const res = await request({
-      url: '/auth/login',
-      method: 'post',
-      data: new URLSearchParams(loginData),
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-    })
-    setToken(res.token)
-    userId.value = res.userId
-    username.value = res.username
-    tenantId.value = res.tenantId
-    return res
+    const response = await authApi.login(loginData)
+    setToken(response.token)
+    userId.value = response.userId === null || response.userId === undefined
+      ? null : String(response.userId)
+    username.value = response.username || ''
+    setActiveTenantCode(loginData?.tenantCode)
+    applyAuthContext(response)
+    return response
   }
 
   async function getUserInfo() {
-    const res = await request({
-      url: '/auth/me',
-      method: 'get'
-    })
-    userId.value = res.userId
-    username.value = res.username
-    nickname.value = res.nickname || res.username
-    phone.value = res.phone || ''
-    email.value = res.email || ''
-    tenantId.value = res.tenantId
-    externalUserId.value = res.externalUserId || null
-    roles.value = res.roles || []
-    permissions.value = res.permissions || []
-    return res
+    const response = await authApi.getUserInfo()
+    userId.value = response.userId === null || response.userId === undefined
+      ? null : String(response.userId)
+    username.value = response.username || ''
+    nickname.value = response.nickname || response.username || ''
+    phone.value = response.phone || ''
+    email.value = response.email || ''
+    externalUserId.value = response.externalUserId || null
+    roles.value = response.roles || []
+    permissions.value = response.permissions || []
+    applyAuthContext(response)
+    return response
+  }
+
+  async function loadAvailableTenants() {
+    const response = await getTenantOptions()
+    availableTenants.value = (response.data || [])
+      .filter((tenant) => String(tenant.id) !== '0' && tenant.status === 1)
+      .map((tenant) => ({ ...tenant, id: String(tenant.id) }))
+    const activeTenant = availableTenants.value.find((tenant) => tenant.id === activeTenantId.value)
+    if (activeTenant?.tenantCode) setActiveTenantCode(activeTenant.tenantCode)
+    return availableTenants.value
   }
 
   async function getMenuTree() {
-    const res = await request({
-      url: '/menus',
-      method: 'get'
-    })
-    menuTree.value = res.data || res || []
+    if (!activeTenantId.value) {
+      menuTree.value = []
+      return menuTree.value
+    }
+    const response = await authApi.getMenuTree()
+    menuTree.value = normalizeBackendMenus(response.data || response || [])
     return menuTree.value
   }
 
+  function clearTenantScopedState() {
+    roles.value = []
+    permissions.value = []
+    invalidateAuthorizationState()
+  }
+
+  function invalidateAuthorizationState() {
+    menuTree.value = []
+    routerLoaded.value = false
+  }
+
+  function acquireTenantContextOperation() {
+    return tenantContextGate.tryAcquireOperation()
+  }
+
+  async function switchTenant(tenant, { onUnrecoverable } = {}) {
+    const finishTenantSwitch = tenantContextGate.tryBeginSwitch()
+    if (!finishTenantSwitch) {
+      throw new Error(tenantSwitching.value
+        ? '租户切换正在进行，请稍后重试'
+        : '当前存在租户相关操作，请等待操作完成后再切换租户')
+    }
+    const tenantIdValue = typeof tenant === 'object' ? tenant?.id : tenant
+    const targetTenant = typeof tenant === 'object'
+      ? tenant
+      : availableTenants.value.find((item) => item.id === String(tenantIdValue))
+    try {
+      await synchronizeTenantSwitch({
+        tenantId: tenantIdValue,
+        requestSwitch: authApi.switchTenant,
+        applyContext: applyAuthContext,
+        clearTenantState: clearTenantScopedState,
+        refreshIdentity: getUserInfo,
+        refreshTenants: loadAvailableTenants,
+        refreshMenu: getMenuTree,
+        resetState,
+        onUnrecoverable,
+        isTargetTenantActive: () => activeTenantId.value !== null
+          && String(activeTenantId.value) === String(tenantIdValue),
+      })
+      if (targetTenant?.tenantCode) setActiveTenantCode(targetTenant.tenantCode)
+      routerLoaded.value = true
+    } finally {
+      finishTenantSwitch()
+    }
+  }
+
   function resetState() {
-    token.value = ''
+    setToken('')
     userId.value = null
     username.value = ''
     nickname.value = ''
     phone.value = ''
     email.value = ''
-    tenantId.value = null
     externalUserId.value = null
-    roles.value = []
-    permissions.value = []
-    menuTree.value = []
-    routerLoaded.value = false
-    localStorage.removeItem('token')
+    principalTenantId.value = null
+    activeTenantId.value = null
+    setActiveTenantCode('')
+    activeTenantName.value = null
+    globalAdmin.value = false
+    availableTenants.value = []
+    clearTenantScopedState()
   }
 
   async function logout() {
     try {
-      await request({ url: '/auth/logout', method: 'post' })
-    } catch (e) {
-      // 即使后端登出失败也要清理前端状态
+      await authApi.logout()
+    } catch {
+      // The local session must still be cleared if the server is unavailable.
     }
     resetState()
   }
 
-  function setRouterLoaded(val) {
-    routerLoaded.value = val
+  function setRouterLoaded(value) {
+    routerLoaded.value = value
   }
 
   return {
@@ -102,18 +186,31 @@ export const useUserStore = defineStore('user', () => {
     nickname,
     phone,
     email,
-    tenantId,
     externalUserId,
+    tenantId,
+    principalTenantId,
+    activeTenantId,
+    activeTenantCode,
+    activeTenantName,
+    globalAdmin,
+    availableTenants,
     roles,
     permissions,
     menuTree,
     routerLoaded,
+    tenantSwitching,
+    tenantContextBusy,
     setToken,
     login,
     getUserInfo,
+    loadAvailableTenants,
     getMenuTree,
+    clearTenantScopedState,
+    invalidateAuthorizationState,
+    acquireTenantContextOperation,
+    switchTenant,
     resetState,
     logout,
-    setRouterLoaded
+    setRouterLoaded,
   }
 })

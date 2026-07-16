@@ -16,35 +16,88 @@
             label-width="0"
             size="large"
           >
+            <el-form-item prop="tenantCode">
+              <el-select
+                ref="tenantSelectRef"
+                v-model="loginForm.tenantCode"
+                data-testid="tenant-select"
+                placeholder="请选择租户"
+                filterable
+                :loading="tenantOptionsLoading"
+                :disabled="tenantOptionsLoading || !!tenantOptionsError || tenantOptions.length === 0"
+                @change="handleTenantChange"
+                @keyup.enter.stop="focusUsername"
+              >
+                <el-option
+                  v-for="option in tenantOptions"
+                  :key="option.tenantCode"
+                  :label="`${option.tenantName} (${option.tenantCode})`"
+                  :value="option.tenantCode"
+                />
+              </el-select>
+            </el-form-item>
+            <div v-if="tenantOptionsLoading" class="tenant-options-status" role="status">
+              正在加载租户列表...
+            </div>
+            <div v-else-if="tenantOptionsError" class="tenant-options-status is-error" role="alert">
+              <span>{{ tenantOptionsError }}</span>
+              <el-button link type="primary" @click="loadTenantOptions">重试</el-button>
+            </div>
+            <div
+              v-else-if="tenantOptions.length === 0"
+              class="tenant-options-status"
+              role="status"
+            >
+              暂无可登录租户
+            </div>
+            <div
+              v-if="requestedTenantUnavailable"
+              class="tenant-options-status is-warning"
+              role="alert"
+            >
+              当前链接指定的租户不可用，请重新选择
+            </div>
             <el-form-item prop="username">
               <el-input
+                ref="usernameInputRef"
                 v-model="loginForm.username"
+                data-testid="username-input"
                 placeholder="请输入用户名"
                 :prefix-icon="User"
+                autocomplete="username"
+                @keyup.enter.prevent="focusPassword"
               />
             </el-form-item>
 
             <el-form-item prop="password">
               <el-input
+                ref="passwordInputRef"
                 v-model="loginForm.password"
+                data-testid="password-input"
                 type="password"
                 placeholder="请输入密码"
                 :prefix-icon="Lock"
                 show-password
+                autocomplete="current-password"
                 @keyup.enter="handleLogin"
               />
             </el-form-item>
 
             <el-form-item>
               <div class="remember-row">
-                <el-checkbox v-model="rememberPassword">记住密码</el-checkbox>
+                <el-checkbox v-model="rememberAccount">记住租户和账号</el-checkbox>
+                <div class="remember-help" role="note">
+                  仅在本机保存租户和账号；密码可由浏览器密码管理器安全保存。
+                </div>
               </div>
             </el-form-item>
 
             <el-form-item>
               <el-button
                 type="primary"
-                :loading="loading"
+                data-testid="login-button"
+                :loading="loginSubmitting"
+                :disabled="loginDisabled"
                 class="login-btn"
                 @click="handleLogin"
               >
@@ -59,9 +112,17 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { getLoginTenantOptions } from '@/api/auth'
+import { parseRememberedLogin } from '@/utils/remembered-login'
+import {
+  extractTenantFromRedirect,
+  firstQueryString,
+  resolvePostLoginTarget,
+  selectInitialTenant,
+} from '@/utils/tenant-login'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 
@@ -70,38 +131,133 @@ const route = useRoute()
 const userStore = useUserStore()
 
 const loginFormRef = ref(null)
-const loading = ref(false)
-const rememberPassword = ref(false)
+const tenantSelectRef = ref(null)
+const usernameInputRef = ref(null)
+const passwordInputRef = ref(null)
+const rememberAccount = ref(false)
+const rememberedTenantCode = ref('')
+const tenantOptions = ref([])
+const tenantOptionsLoading = ref(false)
+const tenantOptionsError = ref('')
+const requestedTenantUnavailable = ref(false)
+const loginSubmitting = ref(false)
 
 const loginForm = reactive({
+  tenantCode: '',
   username: '',
   password: '',
 })
 
 const loginRules = {
+  tenantCode: [{ required: true, message: '请选择租户', trigger: 'change' }],
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
 
+const loginDisabled = computed(() => tenantOptionsLoading.value
+  || !!tenantOptionsError.value
+  || tenantOptions.value.length === 0
+  || requestedTenantUnavailable.value
+  || loginSubmitting.value)
+
 function loadSavedLogin() {
+  loginForm.password = ''
   const saved = localStorage.getItem('rememberedLogin')
-  if (saved) {
-    try {
-      const { username, password } = JSON.parse(saved)
-      loginForm.username = username || ''
-      loginForm.password = password || ''
-      rememberPassword.value = true
-    } catch {
-      // 解析失败则忽略
-    }
+  if (saved === null) return
+
+  const rememberedLogin = parseRememberedLogin(saved)
+  if (!rememberedLogin) {
+    localStorage.removeItem('rememberedLogin')
+    rememberAccount.value = false
+    return
+  }
+
+  rememberedTenantCode.value = rememberedLogin.tenantCode
+  loginForm.username = rememberedLogin.username
+  rememberAccount.value = true
+  localStorage.setItem('rememberedLogin', JSON.stringify(rememberedLogin))
+}
+
+function replaceLoginTenant(tenantCode) {
+  if (!tenantCode || firstQueryString(route.query.tenant) === tenantCode) return
+
+  const normalizedQuery = { ...route.query }
+  delete normalizedQuery.tenantCode
+
+  void router.replace({
+    path: '/login',
+    query: {
+      ...normalizedQuery,
+      tenant: tenantCode,
+    },
+  })
+}
+
+function applyTenantSelection(selection) {
+  loginForm.tenantCode = selection.tenantCode
+  requestedTenantUnavailable.value = selection.requestedUnavailable
+  if (selection.tenantCode) replaceLoginTenant(selection.tenantCode)
+}
+
+function applyInitialTenant() {
+  const selection = selectInitialTenant({
+    requestedTenant: firstQueryString(route.query.tenant),
+    redirectTenant: extractTenantFromRedirect(firstQueryString(route.query.redirect)),
+    rememberedTenant: rememberedTenantCode.value,
+    options: tenantOptions.value,
+  })
+
+  applyTenantSelection(selection)
+}
+
+function applyRequestedTenant(requestedTenant) {
+  applyTenantSelection(selectInitialTenant({
+    requestedTenant,
+    redirectTenant: extractTenantFromRedirect(firstQueryString(route.query.redirect)),
+    rememberedTenant: rememberedTenantCode.value,
+    options: tenantOptions.value,
+  }))
+}
+
+async function loadTenantOptions() {
+  tenantOptionsLoading.value = true
+  tenantOptionsError.value = ''
+  tenantOptions.value = []
+
+  try {
+    const res = await getLoginTenantOptions()
+    tenantOptions.value = Array.isArray(res.data) ? res.data : []
+    applyInitialTenant()
+  } catch (error) {
+    tenantOptionsError.value = '租户列表加载失败'
+    loginForm.tenantCode = ''
+    console.error('租户列表加载失败:', error)
+  } finally {
+    tenantOptionsLoading.value = false
+    await nextTick()
+    tenantSelectRef.value?.focus()
   }
 }
 
+function focusUsername() {
+  if (!loginForm.tenantCode) return
+  usernameInputRef.value?.focus()
+}
+
+function focusPassword() {
+  passwordInputRef.value?.focus()
+}
+
+function handleTenantChange() {
+  requestedTenantUnavailable.value = false
+  replaceLoginTenant(loginForm.tenantCode)
+}
+
 function saveLoginInfo() {
-  if (rememberPassword.value) {
+  if (rememberAccount.value) {
     localStorage.setItem('rememberedLogin', JSON.stringify({
+      tenantCode: loginForm.tenantCode,
       username: loginForm.username,
-      password: loginForm.password,
     }))
   } else {
     localStorage.removeItem('rememberedLogin')
@@ -109,26 +265,36 @@ function saveLoginInfo() {
 }
 
 async function handleLogin() {
+  if (loginDisabled.value) return
+
   const valid = await loginFormRef.value.validate().catch(() => false)
   if (!valid) return
 
-  loading.value = true
+  loginSubmitting.value = true
   try {
     await userStore.login(loginForm)
     saveLoginInfo()
     ElMessage.success('登录成功')
-
-    const redirect = route.query.redirect || '/'
-    router.push(redirect)
+    await router.replace(resolvePostLoginTarget(route.query.redirect, loginForm.tenantCode))
   } catch (error) {
-    // 错误已在 request.js 中处理
+    console.error('登录失败:', error)
   } finally {
-    loading.value = false
+    loginSubmitting.value = false
   }
 }
 
-onMounted(() => {
+watch(
+  () => firstQueryString(route.query.tenant),
+  (requestedTenant) => {
+    if (!tenantOptionsLoading.value && !tenantOptionsError.value && tenantOptions.value.length > 0) {
+      applyRequestedTenant(requestedTenant)
+    }
+  },
+)
+
+onMounted(async () => {
   loadSavedLogin()
+  await loadTenantOptions()
 })
 </script>
 
@@ -206,10 +372,89 @@ onMounted(() => {
   width: 100%;
 }
 
+.tenant-options-status {
+  display: flex;
+  min-height: 28px;
+  margin: -12px 0 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #909399;
+  font-size: 13px;
+}
+
+.tenant-options-status.is-error {
+  color: #f56c6c;
+}
+
+.tenant-options-status.is-warning {
+  color: #e6a23c;
+}
+
 .remember-row {
   width: 100%;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.remember-help {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+:global(html.is-mobile-view .login-container) {
+  min-height: 100dvh;
+  padding: 16px;
   align-items: center;
+}
+
+:global(html.is-mobile-view .login-panel) {
+  width: 100%;
+  max-width: 480px;
+  min-height: 0;
+  flex-direction: column;
+}
+
+:global(html.is-mobile-view .login-left) {
+  width: 100%;
+  padding: 22px 18px;
+}
+
+:global(html.is-mobile-view .login-logo) {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 12px;
+}
+
+:global(html.is-mobile-view .login-title) {
+  font-size: 22px;
+  text-align: center;
+}
+
+:global(html.is-mobile-view .login-right) {
+  width: 100%;
+  padding: 24px 20px;
+}
+
+:global(html.is-mobile-view .form-title) {
+  margin-bottom: 22px;
+}
+
+@media (max-height: 620px) and (orientation: landscape) {
+  :global(html.is-mobile-view .login-container) {
+    align-items: flex-start;
+  }
+
+  :global(html.is-mobile-view .login-left) {
+    padding-block: 14px;
+  }
+
+  :global(html.is-mobile-view .login-logo),
+  :global(html.is-mobile-view .login-subtitle) {
+    display: none;
+  }
 }
 </style>

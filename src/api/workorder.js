@@ -9,12 +9,32 @@ export function createWorkOrder(data) {
   })
 }
 
+// 批量创建工单；调用方应为同一份待重试请求复用 idempotencyKey。
+export function createWorkOrdersBatch(data, idempotencyKey) {
+  return request({
+    url: '/workorders/batch',
+    method: 'post',
+    data,
+    headers: { 'Idempotency-Key': idempotencyKey },
+  })
+}
+
 // AI 智能解析
 export function aiParse(text) {
   return request({
     url: '/ai/parse',
     method: 'post',
     data: { text },
+  })
+}
+
+export function aiParseBatch(text, expectedType) {
+  const data = { text }
+  if (expectedType) data.expectedType = expectedType
+  return request({
+    url: '/ai/parse-batch',
+    method: 'post',
+    data,
   })
 }
 
@@ -31,6 +51,22 @@ export function getWorkOrderList(params) {
 export function getWorkOrderDetail(id) {
   return request({
     url: `/workorders/${id}`,
+    method: 'get',
+  })
+}
+
+// 当前租户内可派发的用户
+export function getAssignmentUserOptions() {
+  return request({
+    url: '/workorders/assignment-options/users',
+    method: 'get',
+  })
+}
+
+// 当前租户内可派发的角色
+export function getAssignmentRoleOptions() {
+  return request({
+    url: '/workorders/assignment-options/roles',
     method: 'get',
   })
 }

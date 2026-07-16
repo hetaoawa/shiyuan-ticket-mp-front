@@ -46,3 +46,332 @@ a {
 a:hover {
   color: #66b1ff;
 }
+
+/*
+ * 移动视图由 UA 与实时视口共同决定（见 utils/device.js）。
+ * Element Plus 的弹层会 Teleport 到 body，因此这些规则必须放在全局样式中。
+ */
+html.is-mobile-view body {
+  min-width: 320px;
+  overflow-x: hidden;
+}
+
+html.is-mobile-view .el-card__header,
+html.is-mobile-view .el-card__body {
+  padding: 12px;
+}
+
+html.is-mobile-view .el-card__header .card-header,
+html.is-mobile-view .el-card__header .header,
+html.is-mobile-view .el-card__header .page-header,
+html.is-mobile-view .el-card__header .section-title-row {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+html.is-mobile-view .header-actions,
+html.is-mobile-view .editor-actions,
+html.is-mobile-view .batch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+html.is-mobile-view .header-actions .el-button,
+html.is-mobile-view .editor-actions .el-button,
+html.is-mobile-view .batch-actions .el-button {
+  margin-left: 0;
+}
+
+html.is-mobile-view .el-form--inline {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+html.is-mobile-view .el-form--inline .el-form-item {
+  width: 100%;
+  margin-right: 0;
+}
+
+html.is-mobile-view .el-form--inline .el-form-item__content,
+html.is-mobile-view .el-form--inline .el-input,
+html.is-mobile-view .el-form--inline .el-select,
+html.is-mobile-view .el-form--inline .el-date-editor {
+  width: 100%;
+}
+
+html.is-mobile-view .el-form:not(.el-form--inline) .el-form-item {
+  display: block;
+}
+
+html.is-mobile-view .el-form:not(.el-form--inline) .el-form-item__label {
+  width: auto !important;
+  height: auto;
+  min-height: 28px;
+  padding: 0;
+  justify-content: flex-start;
+}
+
+html.is-mobile-view .el-form:not(.el-form--inline) .el-form-item__content {
+  margin-left: 0 !important;
+  width: 100%;
+}
+
+html.is-mobile-view .el-form-item__content > .el-input,
+html.is-mobile-view .el-form-item__content > .el-select,
+html.is-mobile-view .el-form-item__content > .el-input-number,
+html.is-mobile-view .el-form-item__content > .el-date-editor {
+  width: 100%;
+}
+
+html.is-mobile-view .el-radio-group,
+html.is-mobile-view .el-checkbox-group {
+  flex-wrap: wrap;
+}
+
+html.is-mobile-view .el-table {
+  max-width: 100%;
+}
+
+html.is-mobile-view .el-table__body-wrapper,
+html.is-mobile-view .el-scrollbar__wrap {
+  overscroll-behavior-x: contain;
+}
+
+html.is-mobile-view .el-table-fixed-column--right,
+html.is-mobile-view .el-table-fixed-column--left {
+  position: static !important;
+}
+
+html.is-mobile-view .el-pagination {
+  width: 100%;
+  justify-content: center !important;
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+html.is-mobile-view .el-pagination__sizes,
+html.is-mobile-view .el-pagination__jump {
+  display: none;
+}
+
+html.is-mobile-view .el-pagination .el-pager li:not(.is-active) {
+  display: none;
+}
+
+html.is-mobile-view .el-dialog {
+  width: calc(100vw - 20px) !important;
+  max-width: 700px;
+  margin-top: max(10px, 3vh);
+  margin-bottom: 10px;
+  max-height: calc(100dvh - 20px);
+  display: flex;
+  flex-direction: column;
+}
+
+html.is-mobile-view .el-dialog__header {
+  padding: 14px 42px 10px 14px;
+}
+
+html.is-mobile-view .el-dialog__body {
+  min-height: 0;
+  padding: 12px 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+html.is-mobile-view .el-dialog__footer {
+  padding: 10px 14px 14px;
+}
+
+html.is-mobile-view .el-dialog__footer > * {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+html.is-mobile-view .el-dialog__footer .el-button {
+  margin-left: 0;
+}
+
+html.is-mobile-view .el-message-box,
+html.is-mobile-view .el-message {
+  width: calc(100vw - 24px);
+  max-width: 420px;
+}
+
+html.is-mobile-view .el-row > [class*='el-col-'] {
+  max-width: 100%;
+  flex: 0 0 100%;
+}
+
+html.is-mobile-view .el-descriptions__label,
+html.is-mobile-view .el-descriptions__content {
+  min-width: 0;
+  word-break: break-word;
+}
+
+html.is-mobile-view .el-range-editor.el-input__wrapper {
+  width: 100%;
+  padding-inline: 8px;
+}
+
+html.is-mobile-view .el-date-editor .el-range-input {
+  min-width: 0;
+}
+
+html.is-mobile-view .el-date-editor .el-range-separator {
+  padding: 0 3px;
+}
+
+html.is-mobile-view .el-picker__popper,
+html.is-mobile-view .el-select__popper {
+  max-width: calc(100vw - 16px);
+}
+
+html.is-mobile-view .el-date-range-picker {
+  width: calc(100vw - 20px);
+  max-width: 646px;
+}
+
+html.is-mobile-view .el-date-range-picker .el-picker-panel__body {
+  min-width: 0;
+}
+
+html.is-mobile-view .el-date-range-picker .el-picker-panel__content {
+  padding: 8px;
+}
+
+html.is-mobile-view .el-button,
+html.is-mobile-view .el-input__wrapper,
+html.is-mobile-view .el-select__wrapper {
+  min-height: 38px;
+}
+
+@media (max-width: 560px) {
+  html.is-mobile-view .el-date-range-picker .el-picker-panel__body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  html.is-mobile-view .el-date-range-picker .el-picker-panel__content {
+    width: 100%;
+  }
+
+  html.is-mobile-view .el-date-range-picker .el-date-range-picker__time-header {
+    display: none;
+  }
+}
+
+/* 手机卡片列表：高频业务列表不再要求用户横向拖动桌面表格。 */
+.mobile-record-list {
+  display: grid;
+  gap: 10px;
+}
+
+.mobile-record-card .el-card__body {
+  display: grid;
+  gap: 12px;
+}
+
+.mobile-record-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mobile-record-title {
+  min-width: 0;
+  color: #303133;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.mobile-record-subtitle {
+  margin-top: 3px;
+  color: #909399;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.mobile-record-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+
+.mobile-record-field {
+  min-width: 0;
+}
+
+.mobile-record-field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.mobile-record-label {
+  display: block;
+  margin-bottom: 2px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.mobile-record-value {
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.mobile-record-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #ebeef5;
+}
+
+.mobile-record-actions .el-button {
+  margin-left: 0;
+}
+
+.mobile-filter-toggle {
+  width: 100%;
+}
+
+.mobile-table-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.mobile-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-table-scroll > .el-table {
+  min-width: 760px;
+}
+
+@media (max-width: 380px) {
+  .mobile-record-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-record-field.is-wide {
+    grid-column: auto;
+  }
+}

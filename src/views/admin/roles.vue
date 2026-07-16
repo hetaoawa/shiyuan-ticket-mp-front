@@ -12,8 +12,10 @@
       </template>
 
       <!-- 角色列表 -->
-      <el-table :data="roleList" v-loading="loading" border>
-        <el-table-column prop="id" label="角色ID" width="100" />
+      <el-table v-if="!isMobileView" :data="roleList" v-loading="loading" border>
+        <el-table-column label="角色ID" width="140">
+          <template #default="{ row }"><OpaqueId :value="row.id" /></template>
+        </el-table-column>
         <el-table-column prop="roleName" label="角色名称" width="150" />
         <el-table-column prop="roleCode" label="权限字符" width="160" />
         <el-table-column prop="remark" label="备注" />
@@ -26,6 +28,33 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div v-else v-loading="loading" class="mobile-record-list">
+        <el-empty v-if="!loading && roleList.length === 0" description="暂无角色" />
+        <el-card v-for="row in roleList" :key="row.id" shadow="never" class="mobile-record-card">
+          <div class="mobile-record-header">
+            <div>
+              <div class="mobile-record-title">{{ row.roleName }}</div>
+              <div class="mobile-record-subtitle">{{ row.roleCode }} · <OpaqueId :value="row.id" /></div>
+            </div>
+          </div>
+          <div class="mobile-record-grid">
+            <div class="mobile-record-field is-wide">
+              <span class="mobile-record-label">备注</span>
+              <span class="mobile-record-value">{{ row.remark || '-' }}</span>
+            </div>
+            <div class="mobile-record-field is-wide">
+              <span class="mobile-record-label">创建时间</span>
+              <span class="mobile-record-value">{{ row.createdAt || '-' }}</span>
+            </div>
+          </div>
+          <div class="mobile-record-actions">
+            <el-button type="primary" plain @click="showEditDialog(row)" v-hasPermi="['role:update']">编辑</el-button>
+            <el-button plain @click="showPermDialog(row)" v-hasPermi="['role:update']">设置权限</el-button>
+            <el-button type="danger" plain @click="handleDelete(row)" v-hasPermi="['role:delete']">删除</el-button>
+          </div>
+        </el-card>
+      </div>
     </el-card>
 
     <!-- 新增/编辑角色弹窗 -->
@@ -72,6 +101,8 @@ import { ref, reactive, onMounted, nextTick } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getRoleList, createRole, updateRole, deleteRole, getRolePermissions, assignPermissions, getAllPermissions } from '@/api/admin/role'
+import OpaqueId from '@/components/OpaqueId.vue'
+import { isMobileView } from '@/utils/device'
 
 const loading = ref(false)
 const submitLoading = ref(false)
