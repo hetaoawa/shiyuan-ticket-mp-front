@@ -12,6 +12,8 @@
       </template>
 
       <!-- 菜单树表格 -->
+      <div v-if="isMobileView" class="mobile-table-hint">菜单层级较宽，可在下方区域左右滑动查看并操作。</div>
+      <div :class="{ 'mobile-table-scroll': isMobileView }">
       <el-table
         :data="menuTree"
         v-loading="loading"
@@ -38,7 +40,7 @@
         </el-table-column>
         <el-table-column prop="sortOrder" label="排序" width="80" />
         <el-table-column prop="permissionCode" label="权限编码" width="150" />
-        <el-table-column label="操作" fixed="right" width="200">
+        <el-table-column label="操作" :fixed="isMobileView ? false : 'right'" width="200">
           <template #default="{ row }">
             <el-button type="primary" link @click="showAddDialog(row)" v-hasPermi="['menu:create']">添加子菜单</el-button>
             <el-button type="primary" link @click="showEditDialog(row)" v-hasPermi="['menu:update']">编辑</el-button>
@@ -46,6 +48,7 @@
           </template>
         </el-table-column>
       </el-table>
+      </div>
     </el-card>
 
     <!-- 新增/编辑菜单弹窗 -->
@@ -103,6 +106,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { isMobileView } from '@/utils/device'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getMenuTree, createMenu, updateMenu, deleteMenu } from '@/api/admin/menu'

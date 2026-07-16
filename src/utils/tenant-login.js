@@ -56,17 +56,19 @@ export function selectInitialTenant({
   }
 
   const rememberedOption = findTenant(rememberedTenant)
-  if (rememberedOption) {
+  if (rememberedOption && rememberedOption.normalizedCode !== 'platform') {
     return { tenantCode: rememberedOption.tenantCode, requestedUnavailable: false }
   }
 
-  const platformOption = findTenant('platform')
-  if (platformOption) {
-    return { tenantCode: platformOption.tenantCode, requestedUnavailable: false }
+  // 平台租户拥有跨租户管理权限，只能由 URL/重定向显式指定或由用户手动选择。
+  // 普通登录入口默认选择首个业务租户，避免会话失效后误入 platform。
+  const businessOption = availableOptions.find((option) => option.normalizedCode !== 'platform')
+  if (businessOption) {
+    return { tenantCode: businessOption.tenantCode, requestedUnavailable: false }
   }
 
   return {
-    tenantCode: availableOptions[0]?.tenantCode ?? '',
+    tenantCode: '',
     requestedUnavailable: false,
   }
 }

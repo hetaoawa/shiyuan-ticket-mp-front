@@ -9,15 +9,33 @@ async function readSource(url) {
   return readFile(url, 'utf8')
 }
 
-test('router sends both unauthenticated branches through the full-route login helper', async () => {
+test('router sends unauthenticated navigation through the full-route login helper with stored tenant', async () => {
   const source = await readSource(routerUrl)
 
   assert.match(
     source,
     /import\s*\{\s*buildLoginLocation\s*\}\s*from\s*['"]@\/utils\/tenant-login['"]/,
   )
-  assert.equal((source.match(/next\(buildLoginLocation\(to\)\)/g) ?? []).length, 2)
+  assert.match(source, /next\(buildLoginLocation\(to,\s*userStore\.activeTenantCode\)\)/)
+  assert.match(source, /next\(loginLocation\)/)
   assert.doesNotMatch(source, /next\(`\/login\?redirect=\$\{to\.path\}`\)/)
+})
+
+test('router snapshots the active tenant before reset when identity refresh fails', async () => {
+  const source = await readSource(routerUrl)
+  assert.match(source, /const\s+activeTenantCodeSnapshot\s*=\s*userStore\.activeTenantCode/)
+  assert.match(
+    source,
+    /const\s+loginLocation\s*=\s*buildLoginLocation\(to,\s*activeTenantCodeSnapshot\)/,
+  )
+  const snapshotIndex = source.indexOf('const activeTenantCodeSnapshot')
+  const identityAwaitIndex = source.indexOf('await userStore.getUserInfo()', snapshotIndex)
+  const loginLocationIndex = source.indexOf('const loginLocation', snapshotIndex)
+  const resetIndex = source.indexOf('userStore.resetState()', loginLocationIndex)
+  const nextIndex = source.indexOf('next(loginLocation)', resetIndex)
+  assert.ok(snapshotIndex >= 0 && snapshotIndex < identityAwaitIndex)
+  assert.ok(identityAwaitIndex < loginLocationIndex)
+  assert.ok(loginLocationIndex < resetIndex && resetIndex < nextIndex)
 })
 
 test('401 handling snapshots the complete route before resetting state and replaces with its login location', async () => {

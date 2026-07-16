@@ -15,7 +15,7 @@
       </div>
     </template>
 
-    <el-table :data="tenants" v-loading="loading" border>
+    <el-table v-if="!isMobileView" :data="tenants" v-loading="loading" border>
       <el-table-column label="租户ID" min-width="160">
         <template #default="{ row }"><OpaqueId :value="row.id" /></template>
       </el-table-column>
@@ -59,6 +59,48 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div v-else v-loading="loading" class="mobile-record-list">
+      <el-empty v-if="!loading && tenants.length === 0" description="暂无租户" />
+      <el-card v-for="row in tenants" :key="row.id" shadow="never" class="mobile-record-card">
+        <div class="mobile-record-header">
+          <div>
+            <div class="mobile-record-title">{{ row.tenantName }}</div>
+            <div class="mobile-record-subtitle">{{ row.tenantCode }} · <OpaqueId :value="row.id" /></div>
+          </div>
+          <el-tag :type="row.status === 1 ? 'success' : 'info'">
+            {{ row.status === 1 ? '启用' : '停用' }}
+          </el-tag>
+        </div>
+        <div class="mobile-record-actions tenant-card-actions">
+          <el-button
+            v-if="userStore.globalAdmin && String(row.id) !== '0'"
+            type="primary"
+            plain
+            :loading="tenantActivatingId === String(row.id)"
+            :disabled="row.status !== 1
+              || String(row.id) === userStore.activeTenantId
+              || tenantActivatingId !== null
+              || userStore.tenantSwitching
+              || userStore.tenantContextBusy"
+            @click="activate(row)"
+          >切换租户</el-button>
+          <el-button
+            v-if="String(row.id) !== '0'"
+            plain
+            :disabled="!canManageAdmins(row)"
+            @click="openAdminDialog(row)"
+          >设置管理员</el-button>
+          <el-button v-if="userStore.globalAdmin" plain @click="openEdit(row)">编辑</el-button>
+          <el-button
+            v-if="userStore.globalAdmin && String(row.id) !== '0'"
+            type="danger"
+            plain
+            @click="remove(row)"
+          >删除</el-button>
+        </div>
+      </el-card>
+    </div>
 
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑租户' : '新增租户'" width="460px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
@@ -132,6 +174,7 @@ import { getSimpleUserList } from '@/api/admin/user'
 import { useUserStore } from '@/stores/user'
 import { synchronizeAdministratorAuthorization } from '@/utils/auth'
 import OpaqueId from '@/components/OpaqueId.vue'
+import { isMobileView } from '@/utils/device'
 
 const router = useRouter()
 const userStore = useUserStore()

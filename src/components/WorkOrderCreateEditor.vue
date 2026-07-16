@@ -392,4 +392,18 @@ defineExpose({ reset })
 .source-line { word-break: break-all; color: #606266; }
 .attachment-tip { width: 100%; margin-top: 6px; }
 .editor-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+:global(html.is-mobile-view .workorder-create-editor > .el-segmented) {
+  width: 100%;
+}
+
+:global(html.is-mobile-view .workorder-create-editor .section-header) {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+:global(html.is-mobile-view .workorder-create-editor .editor-actions > .el-button),
+:global(html.is-mobile-view .workorder-create-editor .batch-actions > .el-button) {
+  flex: 1 1 120px;
+}
 </style>

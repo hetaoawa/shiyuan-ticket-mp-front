@@ -149,11 +149,13 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (!userStore.token) {
-    next(buildLoginLocation(to))
+    next(buildLoginLocation(to, userStore.activeTenantCode))
     return
   }
 
   if (!userStore.routerLoaded) {
+    // getUserInfo 的 401 拦截器会立即 resetState，必须在 await 前保留业务租户。
+    const activeTenantCodeSnapshot = userStore.activeTenantCode
     try {
       await userStore.getUserInfo()
       if (userStore.globalAdmin) {
@@ -185,8 +187,9 @@ router.beforeEach(async (to, from, next) => {
       }
       next({ ...to, replace: true })
     } catch (error) {
+      const loginLocation = buildLoginLocation(to, activeTenantCodeSnapshot)
       userStore.resetState()
-      next(buildLoginLocation(to))
+      next(loginLocation)
     }
     return
   }

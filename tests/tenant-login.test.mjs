@@ -64,8 +64,23 @@ test('remembered tenant is the first fallback', () => {
   })
 })
 
-test('platform tenant is preferred when there is no valid remembered tenant', () => {
+test('first business tenant is preferred when there is no valid remembered tenant', () => {
   assert.deepEqual(selectInitialTenant({ rememberedTenant: 'missing', options }), {
+    tenantCode: 'acme',
+    requestedUnavailable: false,
+  })
+})
+
+test('remembered platform is ignored unless platform is explicitly requested', () => {
+  assert.deepEqual(selectInitialTenant({ rememberedTenant: 'platform', options }), {
+    tenantCode: 'acme',
+    requestedUnavailable: false,
+  })
+  assert.deepEqual(selectInitialTenant({ requestedTenant: 'platform', options }), {
+    tenantCode: 'platform',
+    requestedUnavailable: false,
+  })
+  assert.deepEqual(selectInitialTenant({ redirectTenant: 'platform', options }), {
     tenantCode: 'platform',
     requestedUnavailable: false,
   })
@@ -203,8 +218,15 @@ test('tenant options ignore invalid and duplicate codes while preserving the fir
 })
 
 test('platform matching ignores case and surrounding whitespace', () => {
-  assert.deepEqual(selectInitialTenant({ options: [{ tenantCode: 'PLATFORM' }] }), {
+  assert.deepEqual(selectInitialTenant({
+    requestedTenant: ' platform ',
+    options: [{ tenantCode: 'PLATFORM' }],
+  }), {
     tenantCode: 'PLATFORM',
+    requestedUnavailable: false,
+  })
+  assert.deepEqual(selectInitialTenant({ options: [{ tenantCode: 'PLATFORM' }] }), {
+    tenantCode: '',
     requestedUnavailable: false,
   })
   assert.equal(resolvePostLoginTarget('/workorder/list', ' PLATFORM '), '/system/tenant')

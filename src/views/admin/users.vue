@@ -12,7 +12,13 @@
       </template>
 
       <!-- 搜索栏 -->
-      <el-form :inline="true" :model="searchForm" class="search-form">
+      <el-button
+        v-if="isMobileView"
+        class="mobile-filter-toggle"
+        plain
+        @click="mobileFilterVisible = !mobileFilterVisible"
+      >{{ mobileFilterVisible ? '收起筛选' : '筛选用户' }}</el-button>
+      <el-form v-show="!isMobileView || mobileFilterVisible" :inline="true" :model="searchForm" class="search-form">
         <el-form-item label="用户名">
           <el-input v-model="searchForm.username" placeholder="请输入用户名" clearable />
         </el-form-item>
@@ -29,7 +35,7 @@
       </el-form>
 
       <!-- 用户列表 -->
-      <el-table :data="userList" v-loading="loading" border>
+      <el-table v-if="!isMobileView" :data="userList" v-loading="loading" border>
         <el-table-column label="用户ID" width="140">
           <template #default="{ row }"><OpaqueId :value="row.id" /></template>
         </el-table-column>
@@ -72,13 +78,55 @@
         </el-table-column>
       </el-table>
 
+      <div v-else v-loading="loading" class="mobile-record-list">
+        <el-empty v-if="!loading && userList.length === 0" description="暂无用户" />
+        <el-card v-for="row in userList" :key="row.id" shadow="never" class="mobile-record-card">
+          <div class="mobile-record-header">
+            <div>
+              <div class="mobile-record-title">{{ row.nickname || row.username }}</div>
+              <div class="mobile-record-subtitle">{{ row.username }} · <OpaqueId :value="row.id" /></div>
+            </div>
+            <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
+              {{ row.status === 1 ? '启用' : '禁用' }}
+            </el-tag>
+          </div>
+          <div class="mobile-record-grid">
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">手机号</span>
+              <span class="mobile-record-value">{{ row.phone || '-' }}</span>
+            </div>
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">创建时间</span>
+              <span class="mobile-record-value">{{ row.createdAt || '-' }}</span>
+            </div>
+            <div class="mobile-record-field is-wide">
+              <span class="mobile-record-label">邮箱</span>
+              <span class="mobile-record-value">{{ row.email || '-' }}</span>
+            </div>
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">外部用户 ID</span>
+              <span class="mobile-record-value"><OpaqueId :value="row.externalUserId" /></span>
+            </div>
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">租户</span>
+              <span class="mobile-record-value">{{ getTenantLabel(row.tenantId) }}</span>
+            </div>
+          </div>
+          <div class="mobile-record-actions">
+            <el-button type="primary" plain @click="showEditDialog(row)" v-hasPermi="['user:update']">编辑</el-button>
+            <el-button plain @click="showResetPwdDialog(row)" v-hasPermi="['user:update']">重置密码</el-button>
+            <el-button type="danger" plain @click="handleDelete(row)" v-hasPermi="['user:delete']">删除</el-button>
+          </div>
+        </el-card>
+      </div>
+
       <!-- 分页 -->
       <el-pagination
         v-if="total > 0"
         v-model:current-page="searchForm.pageNum"
         v-model:page-size="searchForm.pageSize"
         :total="total"
-        layout="total, sizes, prev, pager, next, jumper"
+        :layout="isMobileView ? 'total, prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
         style="margin-top: 16px; justify-content: flex-end;"
@@ -156,6 +204,7 @@ import { getRoleList } from '@/api/admin/role'
 import { formatTenantLabel } from '@/utils/tenant'
 import { useUserStore } from '@/stores/user'
 import OpaqueId from '@/components/OpaqueId.vue'
+import { isMobileView } from '@/utils/device'
 
 const userStore = useUserStore()
 const loading = ref(false)
@@ -163,6 +212,7 @@ const submitLoading = ref(false)
 const userList = ref([])
 const total = ref(0)
 const roleOptions = ref([])
+const mobileFilterVisible = ref(false)
 const RESERVED_ADMIN_ROLES = new Set(['SYSTEM_ADMIN', 'GLOBAL_SYSTEM_ADMIN'])
 
 const searchForm = reactive({
@@ -247,6 +297,7 @@ function getActiveTenantId() {
 
 function handleSearch() {
   searchForm.pageNum = 1
+  if (isMobileView.value) mobileFilterVisible.value = false
   loadUserList()
 }
 
@@ -415,5 +466,9 @@ onMounted(() => {
 
 .status-select {
   width: 140px;
+}
+
+:global(html.is-mobile-view .user-manage .search-form) {
+  margin-top: 12px;
 }
 </style>

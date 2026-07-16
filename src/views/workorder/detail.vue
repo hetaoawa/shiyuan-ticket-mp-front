@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>工单详情</span>
-          <div>
+          <div class="detail-actions">
             <el-button
               v-if="detail.status === 'PENDING'"
               v-hasPermi="['workorder:assign']"
@@ -61,8 +61,8 @@
               </span>
             </el-descriptions-item>
             <el-descriptions-item label="标题">{{ detail.title }}</el-descriptions-item>
-            <el-descriptions-item label="所属租户">
-              {{ formatTenantLabel(detail.tenantName, detail.tenantId) }}
+            <el-descriptions-item label="发起人">
+              {{ detail.submitterName || (detail.submitterId ? `用户 ${detail.submitterId}` : '-') }}
             </el-descriptions-item>
             <el-descriptions-item label="状态">
               <el-tag :type="getStatusType(detail.status)">
@@ -122,7 +122,7 @@
               </el-button>
             </div>
             <div v-if="expressData" class="express-info">
-              <el-descriptions :column="2" size="small" border>
+              <el-descriptions :column="isMobileView ? 1 : 2" size="small" border>
                 <el-descriptions-item label="快递公司">{{ getExpressCompanyName(expressData.cpCode) }}</el-descriptions-item>
                 <el-descriptions-item label="物流状态">
                   <el-tag :type="getExpressStatusType(expressData.logisticsStatus)">
@@ -369,6 +369,7 @@
 <script setup>
 import { computed, ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { isMobileView } from '@/utils/device'
 import {
   getWorkOrderDetail,
   assignWorkOrder,
@@ -385,7 +386,6 @@ import { getComments, addComment } from '@/api/comment'
 import { ElMessage } from 'element-plus'
 import { CopyDocument, ArrowLeft } from '@element-plus/icons-vue'
 import FileUpload from '@/components/FileUpload.vue'
-import { formatTenantLabel } from '@/utils/tenant'
 import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
@@ -894,6 +894,17 @@ onMounted(() => {
   justify-content: space-between;
 }
 
+.detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-actions .el-button {
+  margin-left: 0;
+}
+
 .copyable {
   cursor: pointer;
   color: #409eff;
@@ -1035,5 +1046,27 @@ onMounted(() => {
   color: #606266;
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+:global(html.is-mobile-view .workorder-detail .card-header) {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 10px;
+}
+
+:global(html.is-mobile-view .workorder-detail .detail-actions) {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+:global(html.is-mobile-view .express-section),
+:global(html.is-mobile-view .file-section),
+:global(html.is-mobile-view .comment-item) {
+  padding: 12px;
+}
+
+:global(html.is-mobile-view .comment-header) {
+  align-items: flex-start;
+  flex-direction: column;
 }
 </style>

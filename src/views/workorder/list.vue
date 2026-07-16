@@ -2,7 +2,15 @@
   <div class="workorder-list">
     <!-- 搜索区域 -->
     <el-card class="search-card" shadow="never">
-      <el-form :model="searchForm" inline>
+      <el-button
+        v-if="isMobileView"
+        class="mobile-filter-toggle"
+        plain
+        @click="mobileFilterVisible = !mobileFilterVisible"
+      >
+        {{ mobileFilterVisible ? '收起筛选' : `筛选条件${activeFilterCount ? `（${activeFilterCount}）` : ''}` }}
+      </el-button>
+      <el-form v-show="!isMobileView || mobileFilterVisible" :model="searchForm" inline class="search-form">
         <el-form-item label="状态">
           <el-select v-model="searchForm.status" placeholder="全部状态" clearable class="status-select">
             <el-option label="待处理" value="PENDING" />
@@ -68,17 +76,16 @@
       </template>
 
       <!-- 表格 -->
-      <el-table :data="tableData" v-loading="loading" stripe @selection-change="handleSelectionChange">
+      <el-table v-if="!isMobileView" :data="tableData" v-loading="loading" stripe @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" />
         <el-table-column label="工单ID" width="180">
           <template #default="{ row }"><OpaqueId :value="row.id" /></template>
         </el-table-column>
-        <el-table-column label="所属租户" min-width="180">
+        <el-table-column label="发起人" min-width="150">
           <template #default="{ row }">
-            <OpaqueId
-              :value="row.tenantId"
-              :label="formatTenantLabel(row.tenantName, row.tenantId)"
-            />
+            <span v-if="row.submitterName">{{ row.submitterName }}</span>
+            <OpaqueId v-else-if="row.submitterId" :value="row.submitterId" :label="`用户 ${row.submitterId}`" />
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
@@ -122,13 +129,65 @@
         </el-table-column>
       </el-table>
 
+      <div v-else v-loading="loading" class="mobile-record-list">
+        <el-empty v-if="!loading && tableData.length === 0" description="暂无工单" />
+        <el-card v-for="row in tableData" :key="row.id" shadow="never" class="mobile-record-card">
+          <div class="mobile-record-header">
+            <div>
+              <div class="mobile-record-title">{{ row.title || '未命名工单' }}</div>
+              <div class="mobile-record-subtitle">工单 <OpaqueId :value="row.id" /></div>
+            </div>
+            <el-tag :type="getStatusType(row.status)">{{ getStatusLabel(row.status) }}</el-tag>
+          </div>
+          <div class="mobile-record-grid">
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">物流单号</span>
+              <span class="mobile-record-value"><OpaqueId :value="row.trackingNo" /></span>
+            </div>
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">优先级</span>
+              <span class="mobile-record-value">{{ getPriorityLabel(row.priority) }}</span>
+            </div>
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">处理人</span>
+              <span class="mobile-record-value">{{ getAssigneeLabel(row) }}</span>
+            </div>
+            <div class="mobile-record-field">
+              <span class="mobile-record-label">创建时间</span>
+              <span class="mobile-record-value">{{ row.createdAt || '-' }}</span>
+            </div>
+            <div class="mobile-record-field is-wide">
+              <span class="mobile-record-label">发起人</span>
+              <span class="mobile-record-value">{{ getSubmitterLabel(row) }}</span>
+            </div>
+          </div>
+          <div class="mobile-record-actions">
+            <el-checkbox
+              v-hasPermi="['workorder:assign']"
+              :model-value="isMobileRowSelected(row)"
+              @change="(checked) => toggleMobileSelection(row, checked)"
+            >选择</el-checkbox>
+            <el-button type="primary" @click="handleDetail(row)">查看详情</el-button>
+          </div>
+        </el-card>
+      </div>
+
+      <div v-if="isMobileView && selectedRows.length > 0" class="mobile-batch-bar">
+        <span>已选 {{ selectedRows.length }} 项</span>
+        <el-button
+          v-hasPermi="['workorder:assign']"
+          type="warning"
+          @click="showBatchAssignDialog"
+        >批量派发</el-button>
+      </div>
+
       <!-- 分页 -->
       <el-pagination
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.pageSize"
         :page-sizes="[10, 20, 50]"
         :total="pagination.total"
-        layout="total, sizes, prev, pager, next, jumper"
+        :layout="isMobileView ? 'total, prev, pager, next' : 'total, sizes, prev, pager, next, jumper'"
         @size-change="handleSizeChange"
         @current-change="handlePageChange"
       />
@@ -196,7 +255,6 @@
 
 <script setup>
 import { computed, ref, reactive, onMounted } from 'vue'
-import { formatTenantLabel } from '@/utils/tenant'
 import { useRouter } from 'vue-router'
 import {
   getWorkOrderList,
@@ -210,6 +268,7 @@ import { ElMessage } from 'element-plus'
 import { Download, Promotion, Plus } from '@element-plus/icons-vue'
 import WorkOrderCreateEditor from '@/components/WorkOrderCreateEditor.vue'
 import OpaqueId from '@/components/OpaqueId.vue'
+import { isMobileView } from '@/utils/device'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -219,6 +278,7 @@ const loading = ref(false)
 const tableData = ref([])
 const showCreateDialog = ref(false)
 const selectedRows = ref([])
+const mobileFilterVisible = ref(false)
 const batchAssignVisible = ref(false)
 const batchLoading = ref(false)
 const batchAssignForm = reactive({ assignType: 'user', assigneeId: '', assigneeRoleCode: '' })
@@ -246,6 +306,12 @@ const pagination = reactive({
   pageSize: 10,
   total: 0,
 })
+
+const activeFilterCount = computed(() => [
+  searchForm.status,
+  searchForm.trackingNo,
+  searchForm.createdTimeRange?.length === 2,
+].filter(Boolean).length)
 
 // 状态标签类型
 function getStatusType(status) {
@@ -281,6 +347,20 @@ function getPriorityLabel(priority) {
   return map[priority] || '未知'
 }
 
+function getAssigneeLabel(row) {
+  if (row.assigneeName) return row.assigneeName
+  if (row.assigneeRoleName) return row.assigneeRoleName
+  if (row.assigneeId) return `用户 ${row.assigneeId}`
+  if (row.assigneeRole) return row.assigneeRole
+  return '未派发'
+}
+
+function getSubmitterLabel(row) {
+  if (row.submitterName) return row.submitterName
+  if (row.submitterId) return `用户 ${row.submitterId}`
+  return '-'
+}
+
 // 加载数据
 function buildSearchParams(includePage = true) {
   const params = {}
@@ -306,6 +386,7 @@ async function loadData() {
     const res = await getWorkOrderList(params)
     tableData.value = res.data || []
     pagination.total = Number(res.total) || 0
+    selectedRows.value = []
   } catch (error) {
     // 错误已在 request.js 中处理
   } finally {
@@ -316,6 +397,7 @@ async function loadData() {
 // 搜索
 function handleSearch() {
   pagination.page = 1
+  if (isMobileView.value) mobileFilterVisible.value = false
   loadData()
 }
 
@@ -346,6 +428,18 @@ function handlePageChange() {
 // 表格选择变化
 function handleSelectionChange(rows) {
   selectedRows.value = rows
+}
+
+function isMobileRowSelected(row) {
+  return selectedRows.value.some((item) => String(item.id) === String(row.id))
+}
+
+function toggleMobileSelection(row, checked) {
+  if (checked && !isMobileRowSelected(row)) {
+    selectedRows.value = [...selectedRows.value, row]
+  } else if (!checked) {
+    selectedRows.value = selectedRows.value.filter((item) => String(item.id) !== String(row.id))
+  }
 }
 
 // 显示批量派发弹窗
@@ -480,5 +574,40 @@ onMounted(() => {
 
 .status-select {
   width: 180px;
+}
+
+.search-form {
+  margin-top: 12px;
+}
+
+:global(html.is-mobile-view .workorder-list .card-header) {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+:global(html.is-mobile-view .workorder-list .header-actions) {
+  width: 100%;
+}
+
+:global(html.is-mobile-view .workorder-list .header-actions .el-button) {
+  flex: 1 1 130px;
+}
+
+.mobile-batch-bar {
+  position: sticky;
+  bottom: 4px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #f3d19e;
+  border-radius: 8px;
+  background: #fdf6ec;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  color: #b88230;
+  font-size: 13px;
 }
 </style>

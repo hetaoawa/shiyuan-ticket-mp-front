@@ -38,7 +38,7 @@
             {{ status.desiredEnabled ? '停用 SSL' : '启用 SSL' }}
           </el-button>
         </div>
-        <el-descriptions :column="2" border>
+        <el-descriptions :column="isMobileView ? 1 : 2" border>
           <el-descriptions-item label="期望状态">
             <el-tag :type="status.desiredEnabled ? 'success' : 'info'">
               {{ status.desiredEnabled ? 'HTTPS' : 'HTTP' }}
@@ -70,7 +70,7 @@
           type="info"
           :closable="false"
         />
-        <el-descriptions v-else :column="2" border>
+        <el-descriptions v-else :column="isMobileView ? 1 : 2" border>
           <el-descriptions-item label="主题">{{ status.certificate.subjectDn || '-' }}</el-descriptions-item>
           <el-descriptions-item label="算法">{{ status.certificate.keyAlgorithm || '-' }}</el-descriptions-item>
           <el-descriptions-item label="生效时间">{{ formatDate(status.certificate.notBefore) }}</el-descriptions-item>
@@ -155,6 +155,8 @@
           <h3>最近操作</h3>
           <el-button :loading="operationsLoading" @click="loadOperations">刷新记录</el-button>
         </div>
+        <div v-if="isMobileView" class="mobile-table-hint">操作记录字段较多，可在下方区域左右滑动查看。</div>
+        <div :class="{ 'mobile-table-scroll': isMobileView }">
         <el-table v-loading="operationsLoading" :data="operations" border>
           <el-table-column prop="id" label="ID" width="90" />
           <el-table-column prop="operationType" label="操作" min-width="130" />
@@ -173,6 +175,7 @@
             <template #default="scope">{{ formatDate(scope.row.createdAt) }}</template>
           </el-table-column>
         </el-table>
+        </div>
       </section>
     </el-card>
 
@@ -190,6 +193,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { isMobileView } from '@/utils/device'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   createPlatformSslDeployToken,

@@ -7,9 +7,12 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import router from './router'
 import { hasPermi, hasRole } from './directives/permission'
+import { initDeviceDetection } from './utils/device'
 
 import 'element-plus/dist/index.css'
 import './assets/styles/global.css'
+
+initDeviceDetection()
 
 const app = createApp(App)
 

@@ -404,4 +404,57 @@ onMounted(async () => {
   font-size: 12px;
   line-height: 1.5;
 }
+
+:global(html.is-mobile-view .login-container) {
+  min-height: 100dvh;
+  padding: 16px;
+  align-items: center;
+}
+
+:global(html.is-mobile-view .login-panel) {
+  width: 100%;
+  max-width: 480px;
+  min-height: 0;
+  flex-direction: column;
+}
+
+:global(html.is-mobile-view .login-left) {
+  width: 100%;
+  padding: 22px 18px;
+}
+
+:global(html.is-mobile-view .login-logo) {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 12px;
+}
+
+:global(html.is-mobile-view .login-title) {
+  font-size: 22px;
+  text-align: center;
+}
+
+:global(html.is-mobile-view .login-right) {
+  width: 100%;
+  padding: 24px 20px;
+}
+
+:global(html.is-mobile-view .form-title) {
+  margin-bottom: 22px;
+}
+
+@media (max-height: 620px) and (orientation: landscape) {
+  :global(html.is-mobile-view .login-container) {
+    align-items: flex-start;
+  }
+
+  :global(html.is-mobile-view .login-left) {
+    padding-block: 14px;
+  }
+
+  :global(html.is-mobile-view .login-logo),
+  :global(html.is-mobile-view .login-subtitle) {
+    display: none;
+  }
+}
 </style>

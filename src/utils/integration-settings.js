@@ -66,6 +66,12 @@ export function getIntegrationDefinition(type) {
   return INTEGRATION_DEFINITIONS.find((item) => item.type === type)
 }
 
+function defaultPublicFieldValue(field) {
+  if (field.kind === 'boolean') return false
+  if (field.kind === 'number') return null
+  return ''
+}
+
 export function createIntegrationForm(type) {
   const definition = getIntegrationDefinition(type)
   if (!definition) throw new TypeError(`未知集成类型：${type}`)
@@ -77,12 +83,8 @@ export function createIntegrationForm(type) {
     if (field.secret) {
       secretInputs[field.key] = ''
       secretActions[field.key] = 'keep'
-    } else if (field.kind === 'boolean') {
-      config[field.key] = false
-    } else if (field.kind === 'number') {
-      config[field.key] = null
     } else {
-      config[field.key] = ''
+      config[field.key] = defaultPublicFieldValue(field)
     }
   }
 
@@ -135,11 +137,23 @@ export function applyIntegrationResponse(form, response) {
   const normalized = normalizeIntegrationCollection([response]).get(form.type)
   if (!normalized) throw new TypeError(`集成 ${form.type} 的响应格式不完整`)
 
+  const definition = getIntegrationDefinition(form.type)
+  if (!definition) throw new TypeError(`未知集成类型：${form.type}`)
+
   form.enabled = normalized.enabled
   form.configVersion = normalized.configVersion
   form.configured = normalized.configured
   form.secretConfigured = normalized.secretConfigured
-  Object.assign(form.config, normalized.config)
+  const publicFields = definition.fields.filter((field) => !field.secret)
+  const allowedKeys = new Set(publicFields.map((field) => field.key))
+  for (const key of Object.keys(form.config)) {
+    if (!allowedKeys.has(key)) delete form.config[key]
+  }
+  for (const field of publicFields) {
+    form.config[field.key] = Object.prototype.hasOwnProperty.call(normalized.config, field.key)
+      ? normalized.config[field.key]
+      : defaultPublicFieldValue(field)
+  }
   for (const key of Object.keys(form.secretInputs)) {
     form.secretInputs[key] = ''
     form.secretActions[key] = 'keep'
@@ -155,7 +169,11 @@ export function buildIntegrationUpdatePayload(form) {
     else if (value) secrets[key] = { value }
   }
 
-  const config = Object.fromEntries(Object.entries(form.config)
+  const definition = getIntegrationDefinition(form.type)
+  if (!definition) throw new TypeError(`未知集成类型：${form.type}`)
+  const config = Object.fromEntries(definition.fields
+    .filter((field) => !field.secret)
+    .map((field) => [field.key, form.config[field.key]])
     .filter(([, value]) => value !== null && value !== undefined))
 
   return {

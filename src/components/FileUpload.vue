@@ -599,4 +599,19 @@ function nextImage() {
   color: #606266;
   font-size: 14px;
 }
+
+:global(html.is-mobile-view .file-item-wrapper),
+:global(html.is-mobile-view .upload-trigger) {
+  width: min(38vw, 132px);
+  height: min(38vw, 132px);
+}
+
+:global(html.is-mobile-view .file-thumbnail),
+:global(html.is-mobile-view .file-placeholder) {
+  height: calc(min(38vw, 132px) - 28px);
+}
+
+:global(html.is-mobile-view .preview-container) {
+  min-height: min(70vh, 360px);
+}
 </style>

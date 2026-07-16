@@ -1,15 +1,19 @@
 <template>
   <el-watermark :content="watermarkContent">
-    <el-container class="layout-container">
+    <el-container class="layout-container" :class="{ 'mobile-layout': isMobileView }">
       <!-- 侧边栏 -->
-      <el-aside :width="isCollapse ? '64px' : '220px'" class="layout-aside">
+      <el-aside
+        :width="asideWidth"
+        class="layout-aside"
+        :class="{ 'is-mobile-open': mobileMenuOpen }"
+      >
         <div class="logo-container">
           <img src="@/assets/project-logo.png" alt="Logo" class="logo-img" />
-          <span v-show="!isCollapse" class="logo-text">中台工单流转系统</span>
+          <span v-show="!menuCollapsed" class="logo-text">中台工单流转系统</span>
         </div>
         <el-menu
         :default-active="activeMenu"
-        :collapse="isCollapse"
+        :collapse="menuCollapsed"
         :unique-opened="true"
         router
         class="layout-menu"
@@ -20,14 +24,15 @@
         <SidebarMenu :menus="menuRoutes" :get-icon-component="getIconComponent" />
       </el-menu>
     </el-aside>
+    <div v-if="isMobileView && mobileMenuOpen" class="aside-mask" @click="closeMobileMenu" />
 
     <!-- 主内容区 -->
-    <el-container>
+    <el-container class="layout-body">
       <!-- 顶部导航 -->
       <el-header class="layout-header">
         <div class="header-left">
           <el-icon class="collapse-btn" @click="toggleCollapse">
-            <Fold v-if="!isCollapse" />
+            <Fold v-if="isMobileView ? mobileMenuOpen : !isCollapse" />
             <Expand v-else />
           </el-icon>
           <el-breadcrumb separator="/">
@@ -36,6 +41,7 @@
               {{ item.meta?.title }}
             </el-breadcrumb-item>
           </el-breadcrumb>
+          <span v-if="isMobileView" class="mobile-page-title">{{ currentPageTitle }}</span>
         </div>
         <div class="header-right">
           <div class="version-summary">
@@ -98,6 +104,7 @@ import { useUserStore } from '@/stores/user'
 import { getSystemVersion } from '@/api/version'
 import { formatVersionLabel, frontendVersionLabel } from '@/utils/version'
 import { containsMenuPath } from '@/utils/menu'
+import { isMobileView } from '@/utils/device'
 import SidebarMenu from '@/components/SidebarMenu.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -146,6 +153,12 @@ const watermarkContent = computed(() => [
 ])
 
 const isCollapse = ref(false)
+const mobileMenuOpen = ref(false)
+const menuCollapsed = computed(() => isMobileView.value ? false : isCollapse.value)
+const asideWidth = computed(() => {
+  if (isMobileView.value) return '260px'
+  return isCollapse.value ? '64px' : '220px'
+})
 
 // 当前激活的菜单
 const activeMenu = computed(() => {
@@ -156,6 +169,7 @@ const activeMenu = computed(() => {
 const breadcrumbs = computed(() => {
   return route.matched.filter((item) => item.meta?.title)
 })
+const currentPageTitle = computed(() => route.meta?.title || '工单系统')
 
 // 图标映射
 const iconComponentMap = {
@@ -228,8 +242,22 @@ function getIconComponent(iconName) {
 
 // 切换折叠
 function toggleCollapse() {
+  if (isMobileView.value) {
+    mobileMenuOpen.value = !mobileMenuOpen.value
+    return
+  }
   isCollapse.value = !isCollapse.value
 }
+
+function closeMobileMenu() {
+  mobileMenuOpen.value = false
+}
+
+watch(() => route.fullPath, closeMobileMenu)
+
+watch(isMobileView, (mobile) => {
+  if (!mobile) mobileMenuOpen.value = false
+})
 
 // 处理下拉命令
 async function handleCommand(command) {
@@ -280,12 +308,15 @@ async function handleTenantChange(tenantId) {
 <style scoped>
 .layout-container {
   height: 100vh;
+  width: 100%;
+  overflow: hidden;
 }
 
 .layout-aside {
   background-color: #304156;
   transition: width 0.3s;
   overflow: hidden;
+  z-index: 1001;
 }
 
 .logo-container {
@@ -312,6 +343,12 @@ async function handleTenantChange(tenantId) {
 
 .layout-menu {
   border-right: none;
+  height: calc(100vh - 60px);
+  overflow-y: auto;
+}
+
+.layout-body {
+  min-width: 0;
 }
 
 .layout-header {
@@ -384,6 +421,74 @@ async function handleTenantChange(tenantId) {
 .layout-main {
   background-color: #f0f2f5;
   padding: 20px;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.aside-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.mobile-layout .layout-aside {
+  position: fixed;
+  inset: 0 auto 0 0;
+  transform: translateX(-100%);
+  box-shadow: 6px 0 18px rgba(0, 0, 0, 0.18);
+}
+
+.mobile-layout .layout-aside.is-mobile-open {
+  transform: translateX(0);
+}
+
+.mobile-layout .layout-header {
+  height: auto;
+  min-height: 56px;
+  padding: 8px 12px;
+  gap: 10px;
+}
+
+.mobile-layout .header-left {
+  min-width: 0;
+  gap: 10px;
+}
+
+.mobile-page-title {
+  max-width: 96px;
+  overflow: hidden;
+  color: #303133;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-layout .header-left :deep(.el-breadcrumb) {
+  display: none;
+}
+
+.mobile-layout .header-right {
+  min-width: 0;
+  flex: 1;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mobile-layout .version-summary,
+.mobile-layout .tenant-label,
+.mobile-layout .username {
+  display: none;
+}
+
+.mobile-layout .tenant-select {
+  width: min(42vw, 160px);
+}
+
+.mobile-layout .layout-main {
+  padding: 10px;
 }
 
 .fade-enter-active,
