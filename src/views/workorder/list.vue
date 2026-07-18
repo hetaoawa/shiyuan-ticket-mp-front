@@ -79,18 +79,25 @@
       <el-table v-if="!isMobileView" :data="tableData" v-loading="loading" stripe @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="55" />
         <el-table-column label="工单ID" width="180">
-          <template #default="{ row }"><OpaqueId :value="row.id" /></template>
+          <template #default="{ row }">
+            <OpaqueId :value="row.id" :to="`/workorder/detail/${row.id}`" copy-name="工单 ID" />
+          </template>
         </el-table-column>
         <el-table-column label="发起人" min-width="150">
           <template #default="{ row }">
             <span v-if="row.submitterName">{{ row.submitterName }}</span>
-            <OpaqueId v-else-if="row.submitterId" :value="row.submitterId" :label="`用户 ${row.submitterId}`" />
+            <OpaqueId
+              v-else-if="row.submitterId"
+              :value="row.submitterId"
+              :label="`用户 ${row.submitterId}`"
+              copy-name="发起人 ID"
+            />
             <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
         <el-table-column label="物流单号" width="150">
-          <template #default="{ row }"><OpaqueId :value="row.trackingNo" /></template>
+          <template #default="{ row }"><OpaqueId :value="row.trackingNo" copy-name="物流单号" /></template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
@@ -114,6 +121,7 @@
               v-else-if="row.assigneeId"
               :value="row.assigneeId"
               :label="`用户 ${row.assigneeId}`"
+              copy-name="处理人 ID"
             />
             <span v-else-if="row.assigneeRole">{{ row.assigneeRole }}</span>
             <span v-else style="color: #909399;">未派发</span>
@@ -135,14 +143,16 @@
           <div class="mobile-record-header">
             <div>
               <div class="mobile-record-title">{{ row.title || '未命名工单' }}</div>
-              <div class="mobile-record-subtitle">工单 <OpaqueId :value="row.id" /></div>
+              <div class="mobile-record-subtitle">
+                工单 <OpaqueId :value="row.id" :to="`/workorder/detail/${row.id}`" copy-name="工单 ID" />
+              </div>
             </div>
             <el-tag :type="getStatusType(row.status)">{{ getStatusLabel(row.status) }}</el-tag>
           </div>
           <div class="mobile-record-grid">
             <div class="mobile-record-field">
               <span class="mobile-record-label">物流单号</span>
-              <span class="mobile-record-value"><OpaqueId :value="row.trackingNo" /></span>
+              <span class="mobile-record-value"><OpaqueId :value="row.trackingNo" copy-name="物流单号" /></span>
             </div>
             <div class="mobile-record-field">
               <span class="mobile-record-label">优先级</span>

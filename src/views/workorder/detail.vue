@@ -52,13 +52,10 @@
 
       <el-row :gutter="24">
         <!-- 左侧基础信息 -->
-        <el-col :span="12">
+        <el-col :span="isMobileView ? 24 : 12">
           <el-descriptions title="基础信息" :column="1" border>
             <el-descriptions-item label="工单ID">
-              <span class="copyable" @click="handleCopy(detail.id)">
-                {{ detail.id }}
-                <el-icon class="copy-icon"><CopyDocument /></el-icon>
-              </span>
+              <OpaqueId :value="detail.id" copy-name="工单 ID" />
             </el-descriptions-item>
             <el-descriptions-item label="标题">{{ detail.title }}</el-descriptions-item>
             <el-descriptions-item label="发起人">
@@ -78,17 +75,16 @@
               {{ getOrderTypeLabel(detail.type) }}
             </el-descriptions-item>
             <el-descriptions-item label="物流单号">
-              <span v-if="detail.trackingNo" class="copyable" @click="handleCopy(detail.trackingNo)">
-                {{ detail.trackingNo }}
-                <el-icon class="copy-icon"><CopyDocument /></el-icon>
-              </span>
+              <OpaqueId v-if="detail.trackingNo" :value="detail.trackingNo" copy-name="物流单号" />
               <span v-else>无</span>
             </el-descriptions-item>
             <el-descriptions-item label="目标地址">
-              <span v-if="detail.targetAddress" class="copyable" @click="handleCopy(detail.targetAddress)">
-                {{ detail.targetAddress }}
-                <el-icon class="copy-icon"><CopyDocument /></el-icon>
-              </span>
+              <OpaqueId
+                v-if="detail.targetAddress"
+                class="detail-copy-value"
+                :value="detail.targetAddress"
+                copy-name="目标地址"
+              />
               <span v-else>无</span>
             </el-descriptions-item>
             <el-descriptions-item label="描述">
@@ -107,7 +103,7 @@
         </el-col>
 
         <!-- 右侧轨迹信息 -->
-        <el-col :span="12">
+        <el-col :span="isMobileView ? 24 : 12">
           <!-- 物流轨迹 -->
           <div v-if="detail.trackingNo" class="express-section">
             <div class="section-header">
@@ -155,25 +151,58 @@
           </div>
 
           <!-- 处理轨迹 -->
-          <template v-if="canViewAudit">
-            <h4>处理轨迹</h4>
-            <el-timeline>
+          <section class="process-section">
+            <div class="section-header">
+              <h4>处理轨迹</h4>
+              <span class="record-count">共 {{ auditTotal }} 条记录</span>
+            </div>
+            <el-alert
+              v-if="auditTruncated"
+              class="trajectory-limit-alert"
+              title="记录较多，仅展示最近 500 条"
+              type="warning"
+              :closable="false"
+              show-icon
+            />
+            <el-timeline v-if="auditLogs.length" class="process-timeline">
               <el-timeline-item
                 v-for="log in auditLogs"
                 :key="log.id"
-                :timestamp="log.createdAt"
+                :type="getActionTagType(log.action)"
                 placement="top"
               >
-                <el-card shadow="never">
-                  <p class="log-action">{{ getActionLabel(log.action) }}</p>
-                  <p class="log-detail" v-if="log.detail">{{ formatDetail(log.detail) }}</p>
+                <el-card shadow="never" class="process-card">
+                  <div class="process-card-header">
+                    <el-tag :type="getActionTagType(log.action)" effect="light">
+                      {{ getActionLabel(log) }}
+                    </el-tag>
+                    <time class="process-time">{{ log.createdAt || '-' }}</time>
+                  </div>
+                  <div class="process-operator">
+                    <span class="process-label">操作人</span>
+                    <span>{{ getOperatorLabel(log) }}</span>
+                    <OpaqueId
+                      v-if="log.operatorId"
+                      class="operator-id-copy"
+                      :value="log.operatorId"
+                      label=""
+                      empty-text=""
+                      copy-name="操作人 ID"
+                    />
+                  </div>
+                  <div v-if="getDetailEntries(log).length" class="process-detail-grid">
+                    <div v-for="item in getDetailEntries(log)" :key="item.key" class="process-detail-item">
+                      <span class="process-label">{{ item.label }}</span>
+                      <span class="process-detail-value">{{ item.value }}</span>
+                    </div>
+                  </div>
+                  <p v-else-if="getDetailSummary(log)" class="log-detail">{{ getDetailSummary(log) }}</p>
+                  <p v-else class="log-detail is-empty">无补充详情</p>
                 </el-card>
               </el-timeline-item>
-              <el-timeline-item v-if="auditLogs.length === 0" timestamp="暂无记录">
-                <p>暂无处理轨迹</p>
-              </el-timeline-item>
             </el-timeline>
-          </template>
+            <el-empty v-else description="暂无处理轨迹" :image-size="60" />
+          </section>
         </el-col>
       </el-row>
 
@@ -372,6 +401,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { isMobileView } from '@/utils/device'
 import {
   getWorkOrderDetail,
+  getWorkOrderAuditLogs,
   assignWorkOrder,
   closeWorkOrder,
   rejectWorkOrder,
@@ -380,19 +410,26 @@ import {
   getAssignmentUserOptions,
   getAssignmentRoleOptions,
 } from '@/api/workorder'
-import { getAuditLogs } from '@/api/audit'
 import { trackedExpress, traceExpress, getExpressCompanies } from '@/api/express'
 import { getComments, addComment } from '@/api/comment'
 import { ElMessage } from 'element-plus'
-import { CopyDocument, ArrowLeft } from '@element-plus/icons-vue'
+import { ArrowLeft } from '@element-plus/icons-vue'
 import FileUpload from '@/components/FileUpload.vue'
+import OpaqueId from '@/components/OpaqueId.vue'
 import { useUserStore } from '@/stores/user'
+import {
+  getActionLabel,
+  getActionTagType,
+  getDetailEntries,
+  getDetailSummary,
+  getOperatorLabel,
+  normalizeAuditRecords,
+} from '@/utils/audit'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const canAssignWorkOrder = computed(() => userStore.permissions.includes('workorder:assign'))
-const canViewAudit = computed(() => userStore.permissions.includes('audit:view'))
 
 const loading = ref(false)
 const actionLoading = ref(false)
@@ -400,6 +437,8 @@ const expressLoading = ref(false)
 const expressForceLoading = ref(false)
 const detail = ref({})
 const auditLogs = ref([])
+const auditTotal = ref(0)
+const auditTruncated = ref(false)
 const expressData = ref(null)
 const fileIds = ref([])
 const expressCompanies = ref([])
@@ -457,37 +496,6 @@ function getPriorityLabel(priority) {
   return map[priority] || '未知'
 }
 
-// 操作标签
-function getActionLabel(action) {
-  const map = {
-    CREATE: '创建工单',
-    ASSIGN: '派发工单',
-    CLOSE: '关闭工单',
-    REJECT: '驳回工单',
-  }
-  return map[action] || action
-}
-
-// 格式化详情内容
-function formatDetail(detail) {
-  if (!detail) return ''
-  try {
-    const obj = typeof detail === 'string' ? JSON.parse(detail) : detail
-    if (typeof obj === 'object' && obj !== null) {
-      const parts = []
-      if (obj.reason) parts.push(`原因: ${obj.reason}`)
-      if (obj.oldStatus && obj.newStatus) parts.push(`状态: ${obj.oldStatus} → ${obj.newStatus}`)
-      if (obj.assigneeName) parts.push(`处理人: ${obj.assigneeName}`)
-      if (obj.resolution) parts.push(`结论: ${obj.resolution}`)
-      if (obj.remark) parts.push(`备注: ${obj.remark}`)
-      return parts.length > 0 ? parts.join('；') : JSON.stringify(obj, null, 2)
-    }
-    return detail
-  } catch {
-    return detail
-  }
-}
-
 // 工单类型标签
 function getOrderTypeLabel(type) {
   const map = {
@@ -517,17 +525,6 @@ function getExpressCompanyName(cpCode) {
   if (!cpCode) return '未知'
   const company = expressCompanies.value.find(c => c.code === cpCode)
   return company ? company.name : cpCode
-}
-
-// 复制到剪贴板
-async function handleCopy(text) {
-  if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
-    ElMessage.success('已复制')
-  } catch {
-    ElMessage.error('复制失败')
-  }
 }
 
 // 强制刷新物流轨迹
@@ -596,12 +593,8 @@ async function loadDetail() {
   try {
     const res = await getWorkOrderDetail(id)
     detail.value = res.data || {}
-    // 审计轨迹只对具备权限的用户可见
-    if (canViewAudit.value) {
-      await loadAuditLogs(id)
-    } else {
-      auditLogs.value = []
-    }
+    // 轨迹接口复用工单对象级权限，所有可查看当前工单的用户均可查看。
+    await loadAuditLogs(id)
     // 加载评论
     await loadComments()
     // 自动加载物流信息
@@ -635,10 +628,21 @@ async function loadExpressInfo() {
 // 加载审计日志
 async function loadAuditLogs(bizId) {
   try {
-    const res = await getAuditLogs({ bizId, pageSize: 50 })
-    auditLogs.value = res.data || []
+    const res = await getWorkOrderAuditLogs(bizId)
+    const records = normalizeAuditRecords(res).sort((left, right) => {
+      const timeResult = String(left.createdAt || '').localeCompare(String(right.createdAt || ''))
+      if (timeResult !== 0) return timeResult
+      return String(left.id || '').localeCompare(String(right.id || ''))
+    })
+    auditLogs.value = records
+    const responseTotal = Number(res.total)
+    auditTotal.value = Number.isFinite(responseTotal) ? responseTotal : records.length
+    auditTruncated.value = res.truncated === true
   } catch (error) {
-    // 忽略审计日志加载错误
+    auditLogs.value = []
+    auditTotal.value = 0
+    auditTruncated.value = false
+    console.error('加载工单处理轨迹失败', error)
   }
 }
 
@@ -905,31 +909,106 @@ onMounted(() => {
   margin-left: 0;
 }
 
-.copyable {
-  cursor: pointer;
-  color: #409eff;
-  transition: opacity 0.2s;
+.detail-copy-value {
+  max-width: 100%;
 }
 
-.copyable:hover {
-  opacity: 0.8;
+.detail-copy-value :deep(.opaque-id__text) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-word;
 }
 
-.copy-icon {
-  margin-left: 4px;
+.process-section {
+  margin-top: 24px;
+}
+
+.record-count {
+  color: var(--el-text-color-secondary);
   font-size: 12px;
-  vertical-align: middle;
 }
 
-.log-action {
-  font-weight: 600;
-  margin: 0 0 4px;
+.trajectory-limit-alert {
+  margin-bottom: 16px;
+}
+
+.process-timeline {
+  max-height: 600px;
+  padding: 2px 4px 0 0;
+  overflow-y: auto;
+}
+
+.process-card :deep(.el-card__body) {
+  padding: 14px;
+}
+
+.process-card-header,
+.process-operator,
+.process-detail-item {
+  display: flex;
+  align-items: center;
+}
+
+.process-card-header {
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.process-time {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.process-operator {
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.process-label {
+  flex: 0 0 auto;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.operator-id-copy :deep(.opaque-id__text) {
+  display: none;
+}
+
+.process-detail-grid {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.process-detail-item {
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.process-detail-item .process-label {
+  min-width: 64px;
+}
+
+.process-detail-value {
+  min-width: 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .log-detail {
-  color: #909399;
+  color: var(--el-text-color-regular);
   font-size: 13px;
   margin: 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.log-detail.is-empty {
+  color: var(--el-text-color-placeholder);
 }
 
 .express-section {
@@ -1063,6 +1142,12 @@ onMounted(() => {
 :global(html.is-mobile-view .file-section),
 :global(html.is-mobile-view .comment-item) {
   padding: 12px;
+}
+
+:global(html.is-mobile-view .process-card-header) {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
 }
 
 :global(html.is-mobile-view .comment-header) {
