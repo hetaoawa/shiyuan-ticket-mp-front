@@ -55,6 +55,14 @@ export function getWorkOrderDetail(id) {
   })
 }
 
+// 工单处理轨迹（按工单对象权限校验，不要求通用审计日志权限）
+export function getWorkOrderAuditLogs(id) {
+  return request({
+    url: `/workorders/${id}/audit-logs`,
+    method: 'get',
+  })
+}
+
 // 当前租户内可派发的用户
 export function getAssignmentUserOptions() {
   return request({
