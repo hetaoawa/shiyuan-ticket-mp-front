@@ -59,6 +59,16 @@ const staticRoutes = [
         meta: { title: '系统设置', permission: 'settings:view' }
       },
       {
+        path: 'system/qq-connect',
+        name: 'QqConnectSettings',
+        component: () => import('@/views/admin/qq-connect.vue'),
+        meta: {
+          title: 'QQ 登录中间件',
+          globalAdmin: true,
+          tenantNeutral: true,
+        }
+      },
+      {
         path: 'system/platform-ssl',
         name: 'PlatformSsl',
         component: () => import('@/views/admin/platform-ssl.vue'),
@@ -187,6 +197,10 @@ router.beforeEach(async (to, from, next) => {
       }
       next({ ...to, replace: true })
     } catch (error) {
+      if (error.response?.status === 503) {
+        next({ path: '/login', query: { qqRetry: '1', redirect: to.fullPath } })
+        return
+      }
       const loginLocation = buildLoginLocation(to, activeTenantCodeSnapshot)
       userStore.resetState()
       next(loginLocation)

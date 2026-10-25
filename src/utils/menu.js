@@ -6,6 +6,7 @@ export const REGISTERED_MENU_PATHS = Object.freeze([
   '/profile',
   '/settings',
   '/system/platform-ssl',
+  '/system/qq-connect',
   '/system/tenant',
   '/system/user',
   '/system/role',

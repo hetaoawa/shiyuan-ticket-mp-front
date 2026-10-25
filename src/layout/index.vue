@@ -69,7 +69,7 @@
           </div>
           <el-dropdown @command="handleCommand">
             <span class="user-info">
-              <el-avatar :size="32" :icon="UserFilled" />
+              <el-avatar :size="32" :src="userStore.avatar" :icon="UserFilled" />
               <span class="username">{{ userStore.nickname || userStore.username }}</span>
             </span>
             <template #dropdown>
@@ -118,7 +118,8 @@ const userStore = useUserStore()
 const selectedTenantId = ref(userStore.activeTenantId)
 const canManageTenantAdmins = computed(() => userStore.globalAdmin
   || userStore.roles.includes('SYSTEM_ADMIN'))
-const canViewSettings = computed(() => userStore.permissions.includes('settings:view'))
+const canViewSettings = computed(() => Boolean(userStore.activeTenantId)
+  && userStore.permissions.includes('settings:view'))
 const canViewPlatformSsl = computed(() => userStore.globalAdmin
   && userStore.permissions.includes('platform:ssl:manage'))
 const backendVersionInfo = ref({ version: 'unknown', commit: 'unknown' })
@@ -190,7 +191,7 @@ const iconComponentMap = {
 // 菜单数据完全以后端授权结果为准；空菜单保持为空，不能回退到特权菜单。
 const menuRoutes = computed(() => {
   if (userStore.globalAdmin && !userStore.activeTenantId) {
-    return withPlatformSslMenu([{
+    return withPlatformMenus([{
       id: 'system-tenant',
       menuName: '租户管理',
       menuType: 'MENU',
@@ -200,22 +201,32 @@ const menuRoutes = computed(() => {
     }])
   }
   const menus = userStore.menuTree || []
-  return withPlatformSslMenu(withTenantAdminMenu(menus))
+  return withPlatformMenus(withTenantAdminMenu(menus))
 })
 
-function withPlatformSslMenu(menus) {
-  if (!canViewPlatformSsl.value || containsMenuPath(menus, '/system/platform-ssl')) return menus
-  return [
-    ...menus,
-    {
+function withPlatformMenus(menus) {
+  const result = [...menus]
+  if (canViewPlatformSsl.value && !containsMenuPath(result, '/system/platform-ssl')) {
+    result.push({
       id: 'platform-ssl',
       menuName: '平台 SSL',
       menuType: 'MENU',
       path: '/system/platform-ssl',
       icon: 'lock',
       children: [],
-    },
-  ]
+    })
+  }
+  if (userStore.globalAdmin && !containsMenuPath(result, '/system/qq-connect')) {
+    result.push({
+      id: 'platform-qq-connect',
+      menuName: 'QQ 登录中间件',
+      menuType: 'MENU',
+      path: '/system/qq-connect',
+      icon: 'user',
+      children: [],
+    })
+  }
+  return result
 }
 
 function withTenantAdminMenu(menus) {

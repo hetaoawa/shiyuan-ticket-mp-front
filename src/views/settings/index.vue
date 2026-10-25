@@ -1,6 +1,7 @@
 <template>
   <div class="settings-container">
-    <el-card shadow="never">
+    <el-empty v-if="!userStore.activeTenantId" description="选择业务租户后可配置该租户的工单接口及其他集成。" />
+    <el-card v-else shadow="never">
       <template #header>
         <div class="page-header">
           <div>
@@ -21,6 +22,12 @@
       />
 
       <el-tabs v-model="activeType" class="integration-tabs">
+        <el-tab-pane v-if="canManageQqLogin" label="QQ 账号与登录设置" name="QQ_LOGIN" lazy>
+          <QqAdminLoginSettings :key="userStore.activeTenantId" />
+        </el-tab-pane>
+        <el-tab-pane label="租户绑定群" name="BOT_GROUPS" lazy>
+          <TenantBotGroups :key="userStore.activeTenantId" />
+        </el-tab-pane>
         <el-tab-pane
           v-for="definition in INTEGRATION_DEFINITIONS"
           :key="definition.type"
@@ -144,6 +151,8 @@
 </template>
 
 <script setup>
+import QqAdminLoginSettings from '@/components/QqAdminLoginSettings.vue'
+import TenantBotGroups from '@/components/TenantBotGroups.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute } from 'vue-router'
@@ -171,6 +180,7 @@ const forms = reactive(Object.fromEntries(
 
 const canViewSettings = computed(() => userStore.permissions.includes('settings:view'))
 const canUpdateSettings = computed(() => userStore.permissions.includes('settings:update'))
+const canManageQqLogin = computed(() => userStore.globalAdmin || userStore.roles.includes('SYSTEM_ADMIN'))
 
 function controlsDisabled(type) {
   return !ready.value

@@ -51,7 +51,7 @@
             {{ row.email || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="外部用户ID" width="150">
+        <el-table-column label="历史QQ号" width="150">
           <template #default="{ row }">
             <OpaqueId :value="row.externalUserId" />
           </template>
@@ -73,6 +73,7 @@
           <template #default="{ row }">
             <el-button type="primary" link @click="showEditDialog(row)" v-hasPermi="['user:update']">编辑</el-button>
             <el-button type="primary" link @click="showResetPwdDialog(row)" v-hasPermi="['user:update']">重置密码</el-button>
+            <el-button type="primary" link @click="showQqDialog(row)" v-hasPermi="['user:update']">QQ 绑定</el-button>
             <el-button type="danger" link @click="handleDelete(row)" v-hasPermi="['user:delete']">删除</el-button>
           </template>
         </el-table-column>
@@ -104,7 +105,7 @@
               <span class="mobile-record-value">{{ row.email || '-' }}</span>
             </div>
             <div class="mobile-record-field">
-              <span class="mobile-record-label">外部用户 ID</span>
+              <span class="mobile-record-label">历史QQ号</span>
               <span class="mobile-record-value"><OpaqueId :value="row.externalUserId" /></span>
             </div>
             <div class="mobile-record-field">
@@ -115,6 +116,7 @@
           <div class="mobile-record-actions">
             <el-button type="primary" plain @click="showEditDialog(row)" v-hasPermi="['user:update']">编辑</el-button>
             <el-button plain @click="showResetPwdDialog(row)" v-hasPermi="['user:update']">重置密码</el-button>
+            <el-button plain @click="showQqDialog(row)" v-hasPermi="['user:update']">QQ 绑定</el-button>
             <el-button type="danger" plain @click="handleDelete(row)" v-hasPermi="['user:delete']">删除</el-button>
           </div>
         </el-card>
@@ -148,8 +150,8 @@
         <el-form-item label="邮箱" prop="email">
           <el-input v-model="userForm.email" placeholder="请输入邮箱" clearable />
         </el-form-item>
-        <el-form-item label="外部用户ID" prop="externalUserId">
-          <el-input v-model="userForm.externalUserId" placeholder="外部系统用户ID（选填）" clearable />
+        <el-form-item label="历史QQ号" prop="externalUserId">
+          <el-input v-model="userForm.externalUserId" placeholder="仅作历史参考；新账号无需填写" clearable />
         </el-form-item>
         <el-form-item label="租户">
           <el-input :model-value="getTenantLabel(userForm.tenantId)" disabled />
@@ -180,6 +182,17 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="qqDialogVisible" title="QQ 绑定" width="min(560px, 92vw)" v-loading="qqBusy">
+      <p>用户：{{ qqUser?.nickname || qqUser?.username }}；{{ qqBound ? '已绑定 QQ' : '尚未绑定 QQ' }}</p>
+      <p>将生成的链接发给本人，用户通过 QQ 授权后完成绑定。</p>
+      <el-button :disabled="qqBusy" @click="createBindingLink">{{ qqBound ? '生成重新绑定链接' : '生成绑定链接' }}</el-button>
+      <el-input v-if="qqLink" :model-value="qqLink" readonly style="margin-top: 12px" @focus="$event.target.select()" />
+      <p v-if="qqLink">24 小时有效，使用后失效。新链接会作废此前发出的链接。</p>
+      <template #footer>
+        <el-button @click="qqDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 重置密码弹窗 -->
     <el-dialog v-model="resetPwdVisible" title="重置密码" width="400px">
       <el-form :model="resetPwdForm" label-width="80px">
@@ -200,6 +213,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getUserList, createUser, updateUser, deleteUser, resetPassword, getUserRoles, assignRoles } from '@/api/admin/user'
+import { getUserQq, generateQqBindingLink } from '@/api/admin/user'
 import { getRoleList } from '@/api/admin/role'
 import { formatTenantLabel } from '@/utils/tenant'
 import { useUserStore } from '@/stores/user'
@@ -207,6 +221,32 @@ import OpaqueId from '@/components/OpaqueId.vue'
 import { isMobileView } from '@/utils/device'
 
 const userStore = useUserStore()
+const qqDialogVisible = ref(false)
+const qqBusy = ref(false)
+const qqBound = ref(false)
+const qqUser = ref(null)
+const qqLink = ref('')
+async function showQqDialog(row) {
+  qqBusy.value = true
+  qqLink.value = ''
+  qqUser.value = row
+  try {
+    const data = (await getUserQq(row.id)).data
+    qqBound.value = data.bound
+    qqDialogVisible.value = true
+  } catch (error) { console.error('加载 QQ 绑定失败', error) }
+  finally { qqBusy.value = false }
+}
+async function createBindingLink() {
+  if (qqBound.value) {
+    try { await ElMessageBox.confirm('重新绑定成功后，该账号原有登录会话将被撤销。继续生成链接？', '重新绑定 QQ', { type: 'warning' }) }
+    catch { return }
+  }
+  qqBusy.value = true
+  try { qqLink.value = (await generateQqBindingLink(qqUser.value.id, qqBound.value)).data.url }
+  catch (error) { console.error('生成 QQ 绑定链接失败', error) }
+  finally { qqBusy.value = false }
+}
 const loading = ref(false)
 const submitLoading = ref(false)
 const userList = ref([])
@@ -397,7 +437,7 @@ async function handleSubmit() {
       await assignRoles(userForm.id, { role_ids: assignableRoleIds })
       ElMessage.success('更新成功')
     } else {
-      await createUser({
+      const created = await createUser({
         username: userForm.username,
         nickname: userForm.nickname,
         phone: userForm.phone || null,
@@ -409,6 +449,8 @@ async function handleSubmit() {
         roleIds: assignableRoleIds,
       })
       ElMessage.success('创建成功')
+      await showQqDialog({ id: created.data, username: userForm.username, nickname: userForm.nickname })
+      await createBindingLink()
     }
     dialogVisible.value = false
     loadUserList()

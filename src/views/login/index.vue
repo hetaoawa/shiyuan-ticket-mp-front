@@ -9,6 +9,16 @@
       <div class="login-right">
         <div class="login-form-wrapper">
           <h2 class="form-title">用户登录</h2>
+          <el-alert v-if="qqError" :title="qqError" type="warning" :closable="false" show-icon style="margin-bottom: 16px" />
+          <el-button v-if="route.query.qqRetry && userStore.token" class="login-btn" @click="resumeSession">重试恢复登录</el-button>
+          <template v-if="qqEnabled">
+            <el-button type="primary" class="login-btn" :loading="qqLoading" @click="handleQqLogin">
+              {{ bindingToken ? '使用 QQ 绑定此工单账号' : 'QQ 登录' }}
+            </el-button>
+            <p v-if="bindingToken" class="remember-help">此链接用于绑定管理员预建的工单账号，请确认使用你本人的 QQ。</p>
+            <el-divider>账号密码登录</el-divider>
+            <p class="remember-help">货主和管理员的密码登录由租户设置控制；关闭后请使用 QQ 登录。</p>
+          </template>
           <el-form
             ref="loginFormRef"
             :model="loginForm"
@@ -105,6 +115,13 @@
               </el-button>
             </el-form-item>
           </el-form>
+          <el-dialog v-model="qqAccountDialog" title="选择工单账号" width="min(480px, 92vw)" :close-on-click-modal="false">
+            <p>此 QQ 已关联以下账号，请选择本次登录的租户。</p>
+            <el-button v-for="account in qqAccounts" :key="account.userId" :loading="qqLoading"
+              style="display: block; width: 100%; margin: 12px 0" @click="finishQqLogin(account)">
+              {{ account.tenantName }} · {{ account.nickname || account.username }}（{{ account.username }}）
+            </el-button>
+          </el-dialog>
         </div>
       </div>
     </div>
@@ -116,6 +133,7 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { getLoginTenantOptions } from '@/api/auth'
+import { getQqOptions, startQqLogin, getQqAccounts, selectQqAccount } from '@/api/auth'
 import { parseRememberedLogin } from '@/utils/remembered-login'
 import {
   extractTenantFromRedirect,
@@ -141,6 +159,41 @@ const tenantOptionsLoading = ref(false)
 const tenantOptionsError = ref('')
 const requestedTenantUnavailable = ref(false)
 const loginSubmitting = ref(false)
+const qqEnabled = ref(false)
+const qqLoading = ref(false)
+const qqError = ref('')
+const bindingToken = ref('')
+const qqAccounts = ref([])
+const qqAccountDialog = ref(false)
+
+async function handleQqLogin() {
+  qqLoading.value = true
+  try {
+    sessionStorage.setItem('qqLoginRedirect', firstQueryString(route.query.redirect) || '/')
+    const response = await startQqLogin({ bindingToken: bindingToken.value })
+    window.location.assign(response.data.url)
+  } catch (error) { console.error('发起 QQ 登录失败', error) }
+  finally { qqLoading.value = false }
+}
+
+async function finishQqLogin(account) {
+  if (qqLoading.value) return
+  qqLoading.value = true
+  try {
+    const response = await selectQqAccount(String(account.userId))
+    userStore.resetState()
+    userStore.setToken(response.token)
+    qqAccountDialog.value = false
+    const target = sessionStorage.getItem('qqLoginRedirect') || '/'
+    sessionStorage.removeItem('qqLoginRedirect')
+    await router.replace(resolvePostLoginTarget(target, account.tenantCode))
+  } catch (error) { console.error('QQ 登录失败', error) }
+  finally { qqLoading.value = false }
+}
+
+function resumeSession() {
+  return router.replace(resolvePostLoginTarget(firstQueryString(route.query.redirect), ''))
+}
 
 const loginForm = reactive({
   tenantCode: '',
@@ -293,8 +346,25 @@ watch(
 )
 
 onMounted(async () => {
+  const fragment = new URLSearchParams(route.hash.replace(/^#/, ''))
+  bindingToken.value = fragment.get('qq-bind') || ''
+  qqError.value = firstQueryString(route.query.qqError)
+  if (bindingToken.value) {
+    // The binding secret stays only in memory and is never sent as an HTTP referrer.
+    await router.replace({ path: '/login', query: route.query, hash: '' })
+  }
   loadSavedLogin()
   await loadTenantOptions()
+  try {
+    qqEnabled.value = (await getQqOptions()).data.enabled
+    if (route.query.qq === 'ready') {
+      qqAccounts.value = (await getQqAccounts()).data || []
+      await router.replace({ path: '/login' })
+      if (qqAccounts.value.length === 1) await finishQqLogin(qqAccounts.value[0])
+      else if (qqAccounts.value.length > 1) qqAccountDialog.value = true
+      else qqError.value = '没有可用工单账号，请联系管理员。'
+    }
+  } catch (error) { console.error('加载 QQ 登录状态失败', error) }
 })
 </script>
 
