@@ -11,6 +11,7 @@ export const useUserStore = defineStore('user', () => {
   const userId = ref(null)
   const username = ref('')
   const nickname = ref('')
+  const avatar = ref('')
   const phone = ref('')
   const email = ref('')
   const externalUserId = ref(null)
@@ -73,6 +74,7 @@ export const useUserStore = defineStore('user', () => {
       ? null : String(response.userId)
     username.value = response.username || ''
     nickname.value = response.nickname || response.username || ''
+    avatar.value = response.avatar || ''
     phone.value = response.phone || ''
     email.value = response.email || ''
     externalUserId.value = response.externalUserId || null
@@ -154,6 +156,7 @@ export const useUserStore = defineStore('user', () => {
     userId.value = null
     username.value = ''
     nickname.value = ''
+    avatar.value = ''
     phone.value = ''
     email.value = ''
     externalUserId.value = null
@@ -184,6 +187,7 @@ export const useUserStore = defineStore('user', () => {
     userId,
     username,
     nickname,
+    avatar,
     phone,
     email,
     externalUserId,

@@ -1,5 +1,13 @@
 import request from '@/utils/request'
 
+export const getQqOptions = () => request.get('/auth/qq/options')
+export const startQqLogin = (data) => request.post('/auth/qq/start', data)
+export const getQqAccounts = () => request.post('/auth/qq/accounts')
+export const selectQqAccount = (userId) => request.post('/auth/qq/select', { userId })
+export const getAuthPolicy = () => request.get('/auth/qq/admin-policy')
+export const updateAuthPolicy = (passwordLoginEnabled) => request.put('/auth/qq/admin-policy', { passwordLoginEnabled })
+export const generateOwnQqLink = (rebind) => request.post('/auth/qq/admin-binding-link', { rebind })
+
 // 登录
 export function login(data) {
   return request({

@@ -46,6 +46,8 @@
               强制驳回
             </el-button>
             <el-button :icon="ArrowLeft" @click="handleBack">返回</el-button>
+            <el-button v-if="detail.status && detail.status !== 'CLOSED'" v-hasPermi="['workorder:force-close']"
+              type="danger" @click="showForceCloseDialog">强制完结</el-button>
           </div>
         </div>
       </template>
@@ -277,7 +279,7 @@
     </el-dialog>
 
     <!-- 关闭弹窗 -->
-    <el-dialog v-model="closeDialogVisible" title="关闭工单" width="400px">
+    <el-dialog v-model="closeDialogVisible" :title="forceClosing ? '强制完结工单' : '关闭工单'" width="400px">
       <el-form :model="closeForm" label-width="80px">
         <el-form-item label="处理结论" required>
           <el-input
@@ -403,7 +405,8 @@ import {
   getWorkOrderDetail,
   getWorkOrderAuditLogs,
   assignWorkOrder,
-  closeWorkOrder,
+    closeWorkOrder,
+    forceCloseWorkOrder,
   rejectWorkOrder,
   resubmitWorkOrder,
   forceRejectWorkOrder,
@@ -459,6 +462,7 @@ function acquireWorkOrderOperation() {
 // 弹窗控制
 const assignDialogVisible = ref(false)
 const closeDialogVisible = ref(false)
+  const forceClosing = ref(false)
 const rejectDialogVisible = ref(false)
 const expressQueryVisible = ref(false)
 const resubmitDialogVisible = ref(false)
@@ -723,9 +727,16 @@ function handleAssignTypeChange() {
 
 // 显示关闭弹窗
 function showCloseDialog() {
+    forceClosing.value = false
   closeForm.resolution = ''
   closeDialogVisible.value = true
 }
+
+  function showForceCloseDialog() {
+    closeForm.resolution = ''
+    forceClosing.value = true
+    closeDialogVisible.value = true
+  }
 
 // 显示驳回弹窗
 function showRejectDialog() {
@@ -790,7 +801,7 @@ async function handleClose() {
   if (!releaseTenantContext) return
   actionLoading.value = true
   try {
-    await closeWorkOrder(detail.value.id, closeForm.resolution)
+      await (forceClosing.value ? forceCloseWorkOrder : closeWorkOrder)(detail.value.id, closeForm.resolution)
     ElMessage.success('关闭成功')
     closeDialogVisible.value = false
     await loadDetail()
