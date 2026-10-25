@@ -1,5 +1,8 @@
 import request from '@/utils/request'
 
+export const getUserQq = (id) => request.get(`/admin/users/${id}/qq`)
+export const generateQqBindingLink = (id, rebind = false) => request.post(`/admin/users/${id}/qq/binding-link`, { rebind })
+
 // 获取用户列表（需要管理员权限）
 export function getUserList(params) {
   return request({

@@ -9,6 +9,7 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import { createDevApiProxy } from './scripts/dev-api-proxy.js'
 
 const packageJson = JSON.parse(
   readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8'),
@@ -46,7 +47,7 @@ const appVersion = packageJson.version || 'unknown'
 const gitCommit = resolveGitCommit()
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command, mode }) => ({
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
     __GIT_COMMIT__: JSON.stringify(gitCommit),
@@ -68,12 +69,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    proxy: {
-      '/api': {
-        target: 'http://localhost',
-        changeOrigin: true,
-      },
-    },
+    proxy: command === 'serve' ? createDevApiProxy(mode) : undefined,
   },
   build: {
     rollupOptions: {
@@ -85,4 +81,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

@@ -9,7 +9,7 @@
           </template>
           <div class="user-info-card">
             <div class="avatar-section">
-              <el-avatar :size="80" :icon="UserFilled" />
+              <el-avatar :size="80" :src="userStore.avatar" :icon="UserFilled" />
               <h3>{{ userStore.nickname || userStore.username }}</h3>
               <p class="username">@{{ userStore.username }}</p>
             </div>

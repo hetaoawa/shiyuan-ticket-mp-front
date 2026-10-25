@@ -4,6 +4,7 @@ const ACTION_LABELS = {
   CLOSE: '关闭工单',
   REJECT: '驳回工单',
   FORCE_REJECT: '强制驳回',
+  FORCE_CLOSE: '强制完结',
   RESUBMIT: '重新提交',
   UPDATE: '更新配置',
 }
@@ -92,6 +93,7 @@ export function getActionTagType(action) {
     CLOSE: 'success',
     REJECT: 'danger',
     FORCE_REJECT: 'danger',
+    FORCE_CLOSE: 'success',
     RESUBMIT: 'warning',
     UPDATE: 'warning',
   }

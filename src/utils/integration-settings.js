@@ -14,13 +14,11 @@ export const INTEGRATION_DEFINITIONS = Object.freeze([
     label: '货主侧 Webhook',
     description: '对接货主侧自定义 Webhook（包括 QQ 机器人等 HTTP Webhook）。',
     fields: [
-      { key: 'url', label: '目标 Webhook URL', placeholder: 'https://example.com/webhook' },
-      { key: 'authorization', label: '调用凭证', secret: true },
+      { key: 'url', label: 'Bot 通知接收地址', placeholder: 'http://127.0.0.1:端口/插件回调路径' },
+      { key: 'signingKey', label: '共享签名密钥', secret: true },
       { key: 'workOrderDetailBaseUrl', label: '工单详情地址前缀', placeholder: 'https://example.com/workorder/detail' },
-      { key: 'receiveAppId', label: '接收端 App ID' },
       { key: 'externalInboundEnabled', label: '允许外部递交工单', kind: 'boolean' },
       { key: 'externalCloseCallbackEnabled', label: '完结后回调货主侧', kind: 'boolean' },
-      { key: 'receivePrivateKey', label: '接收端签名私钥', secret: true, multiline: true },
     ],
   },
   {

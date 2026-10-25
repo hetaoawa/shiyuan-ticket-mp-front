@@ -1,5 +1,7 @@
 import request from '@/utils/request'
 
+export const forceCloseWorkOrder = (id, resolution) => request.post(`/workorders/${id}/force-close`, null, { params: { resolution } })
+
 // 创建工单
 export function createWorkOrder(data) {
   return request({
